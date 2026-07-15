@@ -14,8 +14,11 @@ public class GrassScatterGenerator : MonoBehaviour
     [Tooltip("grassAreaCollider가 없을 때만 사용하는 사각형 생성 영역입니다.")]
     public Vector2 areaSize = new Vector2(30f, 30f);
 
-    [Tooltip("Raycast를 쓰지 않을 때 풀을 생성할 높이입니다.")]
+    [Tooltip("풀 뿌리의 기준 월드 Y 높이입니다.")]
     public float groundHeight = 0f;
+
+    [Tooltip("켜면 모든 풀의 시작점 Y를 groundHeight로 고정합니다.")]
+    public bool lockGrassRootToGroundHeight = true;
 
     [Header("Ground")]
     [Tooltip("켜면 위에서 아래로 Raycast를 쏴서 실제 바닥 높이에 풀을 붙입니다. grassAreaCollider가 있으면 자동으로 켜진 것처럼 동작합니다.")]
@@ -39,6 +42,14 @@ public class GrassScatterGenerator : MonoBehaviour
     [Min(0f)]
     public float blockerPadding = 0.25f;
 
+    [Tooltip("보도/호수 Mesh를 위에서 아래로 검사할 때 시작 높이입니다.")]
+    [Min(1f)]
+    public float blockerRaycastStartHeight = 40f;
+
+    [Tooltip("보도/호수 Mesh를 위에서 아래로 검사할 때 거리입니다.")]
+    [Min(1f)]
+    public float blockerRaycastDistance = 100f;
+
     [Header("Grass")]
     [Min(1)]
     public int grassCount = 2500;
@@ -57,6 +68,9 @@ public class GrassScatterGenerator : MonoBehaviour
 
     [Range(1, 4)]
     public int crossedPlanesPerClump = 3;
+
+    [Tooltip("켜면 잔디 알파 텍스처가 입혀진 billboard 방식으로 생성합니다.")]
+    public bool useTexturedGrassBillboards = true;
 
     public Color grassDark = new Color(0.13f, 0.35f, 0.08f, 1f);
     public Color grassMid = new Color(0.27f, 0.55f, 0.12f, 1f);
@@ -108,6 +122,8 @@ public class GrassScatterGenerator : MonoBehaviour
 
             if (IsBlocked(position, blockers))
                 continue;
+
+            ApplyGrassRootHeight(ref position);
 
             AddGrassClump(
                 grassMeshes,
@@ -274,6 +290,14 @@ public class GrassScatterGenerator : MonoBehaviour
         return false;
     }
 
+    private void ApplyGrassRootHeight(ref Vector3 position)
+    {
+        if (!lockGrassRootToGroundHeight)
+            return;
+
+        position.y = groundHeight;
+    }
+
     private bool IsAllowedGround(Collider groundCollider)
     {
         if (grassAreaCollider == null)
@@ -341,6 +365,9 @@ public class GrassScatterGenerator : MonoBehaviour
         Vector3 position,
         List<Collider> blockers)
     {
+        if (IsBlockedByRaycast(position, blockers))
+            return true;
+
         for (int i = 0; i < blockers.Count; i++)
         {
             Collider blocker = blockers[i];
@@ -348,11 +375,56 @@ public class GrassScatterGenerator : MonoBehaviour
             if (blocker == null || !blocker.enabled)
                 continue;
 
-            if (IsInsideBlockerBoundsXZ(position, blocker.bounds))
+            if (ShouldUseBoundsBlocker(blocker) &&
+                IsInsideBlockerBoundsXZ(position, blocker.bounds))
+            {
                 return true;
+            }
         }
 
         return false;
+    }
+
+    private bool IsBlockedByRaycast(
+        Vector3 position,
+        List<Collider> blockers)
+    {
+        Vector3 rayStart =
+            position + Vector3.up * blockerRaycastStartHeight;
+
+        RaycastHit[] hits = Physics.RaycastAll(
+            rayStart,
+            Vector3.down,
+            blockerRaycastDistance
+        );
+
+        for (int i = 0; i < hits.Length; i++)
+        {
+            Collider hitCollider = hits[i].collider;
+
+            if (hitCollider == null)
+                continue;
+
+            for (int j = 0; j < blockers.Count; j++)
+            {
+                Collider blocker = blockers[j];
+
+                if (blocker == null || !blocker.enabled)
+                    continue;
+
+                if (hitCollider == blocker)
+                    return true;
+            }
+        }
+
+        return false;
+    }
+
+    private bool ShouldUseBoundsBlocker(Collider blocker)
+    {
+        return blocker is BoxCollider ||
+               blocker is SphereCollider ||
+               blocker is CapsuleCollider;
     }
 
     private bool IsInsideBlockerBoundsXZ(
@@ -370,6 +442,12 @@ public class GrassScatterGenerator : MonoBehaviour
         Vector3 position,
         System.Random random)
     {
+        if (useTexturedGrassBillboards)
+        {
+            AddTexturedGrassClump(grassMeshes, position, random);
+            return;
+        }
+
         int bladeCount = Mathf.Max(1, crossedPlanesPerClump);
         float randomScale = Mathf.Lerp(
             1f - sizeVariation,
@@ -407,6 +485,51 @@ public class GrassScatterGenerator : MonoBehaviour
 
             AddBladeTriangle(meshData, baseLeft, baseRight, tip);
             AddBladeTriangle(meshData, baseRight, baseLeft, tip);
+        }
+    }
+
+    private void AddTexturedGrassClump(
+        GrassMeshData[] grassMeshes,
+        Vector3 position,
+        System.Random random)
+    {
+        int planeCount = Mathf.Max(1, crossedPlanesPerClump);
+        float randomScale = Mathf.Lerp(
+            1f - sizeVariation,
+            1f + sizeVariation,
+            (float)random.NextDouble()
+        );
+
+        float width = bladeWidth * 2.8f * randomScale;
+        float height = bladeHeight * randomScale;
+        float baseAngle = (float)random.NextDouble() * 360f;
+        int colorIndex = PickGrassColorIndex(random);
+        GrassMeshData meshData = grassMeshes[colorIndex];
+
+        for (int i = 0; i < planeCount; i++)
+        {
+            float angle = baseAngle + 180f / planeCount * i;
+            Quaternion rotation = Quaternion.Euler(0f, angle, 0f);
+            Vector3 right = rotation * Vector3.right;
+            Vector3 forward = rotation * Vector3.forward;
+            Vector3 center =
+                position +
+                forward * RandomRange(random, -0.035f, 0.035f) +
+                right * RandomRange(random, -0.035f, 0.035f);
+
+            float planeWidth = width * RandomRange(random, 0.8f, 1.25f);
+            float planeHeight = height * RandomRange(random, 0.85f, 1.3f);
+            Vector3 topOffset =
+                Vector3.up * planeHeight +
+                forward * RandomRange(random, -0.05f, 0.08f);
+
+            Vector3 a = center - right * planeWidth * 0.5f;
+            Vector3 b = center + right * planeWidth * 0.5f;
+            Vector3 c = center + right * planeWidth * 0.5f + topOffset;
+            Vector3 d = center - right * planeWidth * 0.5f + topOffset;
+
+            AddGrassQuad(meshData, a, b, c, d);
+            AddGrassQuad(meshData, b, a, d, c);
         }
     }
 
@@ -452,6 +575,34 @@ public class GrassScatterGenerator : MonoBehaviour
         meshData.triangles.Add(index + 2);
     }
 
+    private void AddGrassQuad(
+        GrassMeshData meshData,
+        Vector3 a,
+        Vector3 b,
+        Vector3 c,
+        Vector3 d)
+    {
+        int index = meshData.vertices.Count;
+
+        meshData.vertices.Add(transform.InverseTransformPoint(a));
+        meshData.vertices.Add(transform.InverseTransformPoint(b));
+        meshData.vertices.Add(transform.InverseTransformPoint(c));
+        meshData.vertices.Add(transform.InverseTransformPoint(d));
+
+        meshData.uvs.Add(new Vector2(0f, 0f));
+        meshData.uvs.Add(new Vector2(1f, 0f));
+        meshData.uvs.Add(new Vector2(1f, 1f));
+        meshData.uvs.Add(new Vector2(0f, 1f));
+
+        meshData.triangles.Add(index);
+        meshData.triangles.Add(index + 1);
+        meshData.triangles.Add(index + 2);
+
+        meshData.triangles.Add(index);
+        meshData.triangles.Add(index + 2);
+        meshData.triangles.Add(index + 3);
+    }
+
     private Material CreateGrassMaterial(Color color, string suffix)
     {
         if (grassMaterial != null)
@@ -462,10 +613,14 @@ public class GrassScatterGenerator : MonoBehaviour
             };
 
             ApplyMaterialColor(clonedMaterial, color);
+            ApplyGrassTexture(clonedMaterial);
             return clonedMaterial;
         }
 
-        Shader shader = Shader.Find("Universal Render Pipeline/Unlit");
+        Shader shader = Shader.Find("Semicon/Grass Billboard");
+
+        if (shader == null)
+            shader = Shader.Find("Universal Render Pipeline/Unlit");
 
         if (shader == null)
             shader = Shader.Find("Unlit/Color");
@@ -476,6 +631,7 @@ public class GrassScatterGenerator : MonoBehaviour
         };
 
         ApplyMaterialColor(createdMaterial, color);
+        ApplyGrassTexture(createdMaterial);
         return createdMaterial;
     }
 
@@ -486,6 +642,100 @@ public class GrassScatterGenerator : MonoBehaviour
 
         if (material.HasProperty("_Color"))
             material.SetColor("_Color", color);
+    }
+
+    private void ApplyGrassTexture(Material material)
+    {
+        Texture2D texture = CreateProceduralGrassTexture();
+
+        if (material.HasProperty("_BaseMap"))
+            material.SetTexture("_BaseMap", texture);
+
+        if (material.HasProperty("_MainTex"))
+            material.SetTexture("_MainTex", texture);
+
+        if (material.HasProperty("_Surface"))
+            material.SetFloat("_Surface", 1f);
+
+        if (material.HasProperty("_AlphaClip"))
+            material.SetFloat("_AlphaClip", 1f);
+
+        if (material.HasProperty("_Cutoff"))
+            material.SetFloat("_Cutoff", 0.25f);
+
+        material.SetInt("_Cull", (int)UnityEngine.Rendering.CullMode.Off);
+        material.EnableKeyword("_ALPHATEST_ON");
+        material.renderQueue = 2450;
+    }
+
+    private Texture2D CreateProceduralGrassTexture()
+    {
+        const int width = 64;
+        const int height = 128;
+
+        Texture2D texture = new Texture2D(
+            width,
+            height,
+            TextureFormat.RGBA32,
+            false
+        )
+        {
+            name = "Generated_Grass_Blade_Texture",
+            wrapMode = TextureWrapMode.Clamp,
+            filterMode = FilterMode.Bilinear
+        };
+
+        Color transparent = new Color(1f, 1f, 1f, 0f);
+
+        for (int y = 0; y < height; y++)
+        {
+            for (int x = 0; x < width; x++)
+            {
+                texture.SetPixel(x, y, transparent);
+            }
+        }
+
+        DrawProceduralBlade(texture, 18f, 0f, 30f, height - 3f, 9f);
+        DrawProceduralBlade(texture, 32f, 0f, 34f, height - 1f, 12f);
+        DrawProceduralBlade(texture, 46f, 0f, 37f, height - 10f, 8f);
+        DrawProceduralBlade(texture, 26f, 0f, 17f, height - 24f, 6f);
+        DrawProceduralBlade(texture, 40f, 0f, 54f, height - 26f, 6f);
+
+        texture.Apply();
+        return texture;
+    }
+
+    private void DrawProceduralBlade(
+        Texture2D texture,
+        float rootX,
+        float rootY,
+        float tipX,
+        float tipY,
+        float maxWidth)
+    {
+        int width = texture.width;
+        int height = texture.height;
+
+        for (int y = 0; y < height; y++)
+        {
+            float v = y / (float)(height - 1);
+            float centerX = Mathf.Lerp(rootX, tipX, v);
+            float bladeHalfWidth = Mathf.Lerp(maxWidth, 0.4f, v) * 0.5f;
+
+            for (int x = 0; x < width; x++)
+            {
+                float distance = Mathf.Abs(x - centerX);
+
+                if (distance > bladeHalfWidth)
+                    continue;
+
+                float edge = 1f - distance / Mathf.Max(0.001f, bladeHalfWidth);
+                float alpha = Mathf.Clamp01(edge * Mathf.SmoothStep(0f, 1f, v));
+                Color current = texture.GetPixel(x, y);
+                float newAlpha = Mathf.Max(current.a, alpha);
+                texture.SetPixel(x, y, new Color(1f, 1f, 1f, newAlpha));
+            }
+        }
     }
 
     private void OnDrawGizmosSelected()

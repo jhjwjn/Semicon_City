@@ -7,7 +7,10 @@ using UnityEngine.Splines;
 [RequireComponent(typeof(SplineContainer))]
 public class SplineCurbBlockGenerator : MonoBehaviour
 {
-    [Header("Curb Blocks")]
+    [Header("Legacy Curb Blocks")]
+    [Tooltip("꺼두면 콘크리트 경계석을 만들지 않습니다. 자연형 호수에는 꺼두세요.")]
+    public bool generateCurbBlocks = false;
+
     [Min(0.05f)]
     public float curbWidth = 0.7f;
 
@@ -34,6 +37,41 @@ public class SplineCurbBlockGenerator : MonoBehaviour
     [Tooltip("Spline 높이를 기준으로 수면을 위아래로 이동합니다.")]
     public float waterHeightOffset = -0.08f;
 
+    [Header("Natural Lake Edge")]
+    public bool generateNaturalBank = true;
+
+    [Tooltip("기존 공원 지반을 덮는 바깥쪽 자연 경계 폭입니다.")]
+    [Min(0.05f)]
+    public float bankOuterWidth = 1.2f;
+
+    [Tooltip("물가 안쪽으로 들어가는 경계 폭입니다.")]
+    [Min(0.05f)]
+    public float bankInnerWidth = 0.5f;
+
+    [Tooltip("바깥 경계 높이. 기존 지반보다 아주 살짝 위로 두세요.")]
+    public float bankOuterHeightOffset = 0.025f;
+
+    [Tooltip("물가 경계 높이. 수면보다 살짝 낮거나 비슷하게 두세요.")]
+    public float bankInnerHeightOffset = -0.11f;
+
+    [Tooltip("호수 내부 기존 초록 지반을 가릴 바닥 마스크 높이입니다.")]
+    public float lakeBedHeightOffset = -0.13f;
+
+    [Tooltip("기존 City.002 지반을 실제로 파지 않고, 호수/둔덕 Mesh를 위에 덮어서 자연 호수처럼 보이게 합니다.")]
+    public bool coverExistingGround = true;
+
+    [Tooltip("Cover Existing Ground 모드에서 호수 바닥 마스크가 기존 지반보다 올라오는 높이입니다.")]
+    public float visibleLakeBedOffset = 0.006f;
+
+    [Tooltip("Cover Existing Ground 모드에서 수면 높이입니다. 바닥보다 높고 바깥 둔덕보다 낮게 두세요.")]
+    public float visibleWaterOffset = 0.018f;
+
+    [Tooltip("Cover Existing Ground 모드에서 바깥 둔덕 높이입니다.")]
+    public float visibleBankOuterOffset = 0.04f;
+
+    [Tooltip("Cover Existing Ground 모드에서 물가 안쪽 둔덕 높이입니다.")]
+    public float visibleBankInnerOffset = 0.022f;
+
     [Header("Curve Accuracy")]
     [Range(20, 2000)]
     public int sampleCount = 400;
@@ -41,6 +79,8 @@ public class SplineCurbBlockGenerator : MonoBehaviour
     [Header("Materials")]
     public Material curbMaterial;
     public Material waterMaterial;
+    public Material bankMaterial;
+    public Material lakeBedMaterial;
 
     [Header("Collider")]
     [Tooltip("풀 배치에서 호수/연석 영역을 제외할 수 있도록 MeshCollider를 생성합니다.")]
@@ -49,6 +89,8 @@ public class SplineCurbBlockGenerator : MonoBehaviour
     private const string GeneratedRootName = "Generated_Lake";
     private const string GeneratedCurbName = "Curb_Blocks";
     private const string GeneratedWaterName = "Water_Surface";
+    private const string GeneratedBankName = "Lake_Bank";
+    private const string GeneratedBedName = "Lake_Bed_Mask";
 
     private SplineContainer splineContainer;
 
@@ -87,7 +129,7 @@ public class SplineCurbBlockGenerator : MonoBehaviour
             return;
         }
 
-        if (curbMaterial == null)
+        if (generateCurbBlocks && curbMaterial == null)
         {
             Debug.LogError(
                 $"{name}: Curb Material을 지정하세요."
@@ -121,10 +163,19 @@ public class SplineCurbBlockGenerator : MonoBehaviour
         generatedRoot.transform.localRotation = Quaternion.identity;
         generatedRoot.transform.localScale = Vector3.one;
 
-        CreateCurbObject(
-            sampledPath,
-            generatedRoot.transform
-        );
+        if (generateNaturalBank)
+        {
+            CreateLakeBedObject(sampledPath, generatedRoot.transform);
+            CreateLakeBankObject(sampledPath, generatedRoot.transform);
+        }
+
+        if (generateCurbBlocks)
+        {
+            CreateCurbObject(
+                sampledPath,
+                generatedRoot.transform
+            );
+        }
 
         CreateWaterObject(
             sampledPath,
@@ -133,9 +184,25 @@ public class SplineCurbBlockGenerator : MonoBehaviour
 
         Debug.Log(
             $"[{name}] 호수 생성 완료 | " +
-            $"연석 폭: {curbWidth:F2}, " +
-            $"물 Inset: {waterInset:F2}"
+            $"Natural Bank: {generateNaturalBank}, " +
+            $"Curb: {generateCurbBlocks}, " +
+            $"Water Inset: {waterInset:F2}"
         );
+    }
+
+    [ContextMenu("Apply Natural Lake Preset")]
+    public void ApplyNaturalLakePreset()
+    {
+        generateCurbBlocks = false;
+        generateNaturalBank = true;
+        coverExistingGround = true;
+        waterInset = 0.45f;
+        bankOuterWidth = 1.4f;
+        bankInnerWidth = 0.65f;
+        visibleLakeBedOffset = 0.006f;
+        visibleWaterOffset = 0.018f;
+        visibleBankOuterOffset = 0.04f;
+        visibleBankInnerOffset = 0.022f;
     }
 
     [ContextMenu("Clear Generated Lake")]
@@ -214,6 +281,68 @@ public class SplineCurbBlockGenerator : MonoBehaviour
 
             collider.sharedMesh = filter.sharedMesh;
         }
+    }
+
+    private void CreateLakeBankObject(
+        List<Vector3> path,
+        Transform parent)
+    {
+        GameObject bankObject =
+            new GameObject(GeneratedBankName);
+
+        bankObject.transform.SetParent(parent, false);
+        bankObject.transform.localPosition = Vector3.zero;
+        bankObject.transform.localRotation = Quaternion.identity;
+        bankObject.transform.localScale = Vector3.one;
+
+        MeshFilter filter =
+            bankObject.AddComponent<MeshFilter>();
+
+        MeshRenderer renderer =
+            bankObject.AddComponent<MeshRenderer>();
+
+        filter.sharedMesh =
+            BuildLakeBankMesh(path, bankObject.transform);
+
+        renderer.sharedMaterial =
+            bankMaterial != null
+                ? bankMaterial
+                : curbMaterial;
+
+        if (addMeshColliders)
+        {
+            MeshCollider collider =
+                bankObject.AddComponent<MeshCollider>();
+
+            collider.sharedMesh = filter.sharedMesh;
+        }
+    }
+
+    private void CreateLakeBedObject(
+        List<Vector3> path,
+        Transform parent)
+    {
+        GameObject bedObject =
+            new GameObject(GeneratedBedName);
+
+        bedObject.transform.SetParent(parent, false);
+        bedObject.transform.localPosition = Vector3.zero;
+        bedObject.transform.localRotation = Quaternion.identity;
+        bedObject.transform.localScale = Vector3.one;
+
+        MeshFilter filter =
+            bedObject.AddComponent<MeshFilter>();
+
+        MeshRenderer renderer =
+            bedObject.AddComponent<MeshRenderer>();
+
+        filter.sharedMesh =
+            BuildLakeBedMesh(path, bedObject.transform);
+
+        renderer.sharedMaterial =
+            lakeBedMaterial != null
+                ? lakeBedMaterial
+                : curbMaterial;
     }
 
     private List<Vector3> SampleClosedSpline()
@@ -382,8 +511,7 @@ public class SplineCurbBlockGenerator : MonoBehaviour
                     waterInset;
             }
 
-            insetPoint.y =
-                point.y + waterHeightOffset;
+            insetPoint.y = point.y + GetWaterHeightOffset();
 
             worldPoints.Add(insetPoint);
 
@@ -464,6 +592,200 @@ public class SplineCurbBlockGenerator : MonoBehaviour
         mesh.RecalculateBounds();
 
         return mesh;
+    }
+
+    private Mesh BuildLakeBankMesh(
+        List<Vector3> path,
+        Transform generatedTransform)
+    {
+        Vector3 centroid = CalculateCentroid(path);
+        List<Vector3> outerPoints = new List<Vector3>(path.Count);
+        List<Vector3> innerPoints = new List<Vector3>(path.Count);
+        List<Vector3> waterEdgePoints = new List<Vector3>(path.Count);
+
+        for (int i = 0; i < path.Count; i++)
+        {
+            Vector3 point = path[i];
+            Vector3 directionToCenter = centroid - point;
+            directionToCenter.y = 0f;
+
+            if (directionToCenter.sqrMagnitude < 0.000001f)
+                directionToCenter = Vector3.forward;
+
+            directionToCenter.Normalize();
+
+            Vector3 outer = point - directionToCenter * bankOuterWidth;
+            Vector3 inner = point + directionToCenter * bankInnerWidth;
+            Vector3 waterEdge = point + directionToCenter * waterInset;
+
+            outer.y = point.y + GetBankOuterHeightOffset();
+            inner.y = point.y + GetBankInnerHeightOffset();
+            waterEdge.y = point.y + GetLakeBedHeightOffset();
+
+            outerPoints.Add(outer);
+            innerPoints.Add(inner);
+            waterEdgePoints.Add(waterEdge);
+        }
+
+        List<Vector3> vertices =
+            new List<Vector3>(path.Count * 3);
+
+        List<int> triangles =
+            new List<int>(path.Count * 12);
+
+        List<Vector2> uvs =
+            new List<Vector2>(path.Count * 3);
+
+        for (int i = 0; i < path.Count; i++)
+        {
+            vertices.Add(generatedTransform.InverseTransformPoint(outerPoints[i]));
+            vertices.Add(generatedTransform.InverseTransformPoint(innerPoints[i]));
+            vertices.Add(generatedTransform.InverseTransformPoint(waterEdgePoints[i]));
+
+            uvs.Add(new Vector2(0f, i / (float)path.Count));
+            uvs.Add(new Vector2(0.6f, i / (float)path.Count));
+            uvs.Add(new Vector2(1f, i / (float)path.Count));
+        }
+
+        for (int i = 0; i < path.Count; i++)
+        {
+            int next = (i + 1) % path.Count;
+            int index = i * 3;
+            int nextIndex = next * 3;
+
+            AddQuadIndices(triangles, index, nextIndex, index + 1, nextIndex + 1);
+            AddQuadIndices(triangles, index + 1, nextIndex + 1, index + 2, nextIndex + 2);
+        }
+
+        Mesh mesh = new Mesh
+        {
+            name = $"{name}_LakeBankMesh"
+        };
+
+        if (vertices.Count > 65000)
+        {
+            mesh.indexFormat =
+                UnityEngine.Rendering.IndexFormat.UInt32;
+        }
+
+        mesh.SetVertices(vertices);
+        mesh.SetTriangles(triangles, 0);
+        mesh.SetUVs(0, uvs);
+        mesh.RecalculateNormals();
+        mesh.RecalculateBounds();
+
+        return mesh;
+    }
+
+    private Mesh BuildLakeBedMesh(
+        List<Vector3> path,
+        Transform generatedTransform)
+    {
+        Vector3 centroid = CalculateCentroid(path);
+        List<Vector3> worldPoints = new List<Vector3>(path.Count);
+        List<Vector2> polygon2D = new List<Vector2>(path.Count);
+
+        for (int i = 0; i < path.Count; i++)
+        {
+            Vector3 point = path[i];
+            Vector3 directionToCenter = centroid - point;
+            directionToCenter.y = 0f;
+
+            if (directionToCenter.sqrMagnitude > 0.000001f)
+                point += directionToCenter.normalized * waterInset;
+
+            point.y = path[i].y + GetLakeBedHeightOffset();
+            worldPoints.Add(point);
+            polygon2D.Add(new Vector2(point.x, point.z));
+        }
+
+        List<int> triangles =
+            TriangulatePolygon(polygon2D);
+
+        List<Vector3> vertices =
+            new List<Vector3>(worldPoints.Count);
+
+        List<Vector2> uvs =
+            new List<Vector2>(worldPoints.Count);
+
+        GetBounds2D(polygon2D, out Vector2 min, out Vector2 max);
+        Vector2 size = max - min;
+
+        if (Mathf.Abs(size.x) < 0.0001f)
+            size.x = 1f;
+
+        if (Mathf.Abs(size.y) < 0.0001f)
+            size.y = 1f;
+
+        for (int i = 0; i < worldPoints.Count; i++)
+        {
+            vertices.Add(generatedTransform.InverseTransformPoint(worldPoints[i]));
+            Vector2 point = polygon2D[i];
+            uvs.Add(new Vector2((point.x - min.x) / size.x, (point.y - min.y) / size.y));
+        }
+
+        Mesh mesh = new Mesh
+        {
+            name = $"{name}_LakeBedMaskMesh"
+        };
+
+        if (vertices.Count > 65000)
+        {
+            mesh.indexFormat =
+                UnityEngine.Rendering.IndexFormat.UInt32;
+        }
+
+        mesh.SetVertices(vertices);
+        mesh.SetTriangles(triangles, 0);
+        mesh.SetUVs(0, uvs);
+        mesh.RecalculateNormals();
+        mesh.RecalculateBounds();
+
+        return mesh;
+    }
+
+    private void AddQuadIndices(
+        List<int> triangles,
+        int a,
+        int b,
+        int c,
+        int d)
+    {
+        triangles.Add(a);
+        triangles.Add(b);
+        triangles.Add(c);
+
+        triangles.Add(c);
+        triangles.Add(b);
+        triangles.Add(d);
+    }
+
+    private float GetWaterHeightOffset()
+    {
+        return coverExistingGround
+            ? visibleWaterOffset
+            : waterHeightOffset;
+    }
+
+    private float GetLakeBedHeightOffset()
+    {
+        return coverExistingGround
+            ? visibleLakeBedOffset
+            : lakeBedHeightOffset;
+    }
+
+    private float GetBankOuterHeightOffset()
+    {
+        return coverExistingGround
+            ? visibleBankOuterOffset
+            : bankOuterHeightOffset;
+    }
+
+    private float GetBankInnerHeightOffset()
+    {
+        return coverExistingGround
+            ? visibleBankInnerOffset
+            : bankInnerHeightOffset;
     }
 
     private void AddBox(

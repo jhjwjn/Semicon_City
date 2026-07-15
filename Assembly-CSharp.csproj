@@ -49,10 +49,24 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="Assets/Scripts/Park/SplineCurbBlockGenerator.cs" />
+    <Compile Include="Assets/Idyllic Fantasy Nature/Scripts/PlayerMovement.cs" />
+    <Compile Include="Assets/Scripts/Park/TerrainGrassDetailPainter.cs" />
+    <Compile Include="Assets/Idyllic Fantasy Nature/Scripts/VegetationBendControl.cs" />
     <Compile Include="Assets/Scripts/Park/SplineWalkwayGenerator.cs" />
     <Compile Include="Assets/Scripts/Road/RoadLine_Generator.cs" />
+    <Compile Include="Assets/Idyllic Fantasy Nature/Scripts/WindControl.cs" />
+    <Compile Include="Assets/Idyllic Fantasy Nature/Scripts/CameraMovement.cs" />
+    <Compile Include="Assets/Idyllic Fantasy Nature/Scripts/ButterflySpawn.cs" />
+    <Compile Include="Assets/Scripts/Park/ParkVegetationGenerator.cs" />
+    <Compile Include="Assets/Idyllic Fantasy Nature/Scripts/ButterflySpawnArea.cs" />
     <Compile Include="Assets/IgniteCoders/Simple Water Shader/Resources/WaterReflection.cs" />
+    <Compile Include="Assets/Idyllic Fantasy Nature/Scripts/ExitGame.cs" />
     <Compile Include="Assets/Scripts/Park/GrassScatterGenerator.cs" />
+    <Compile Include="Assets/Idyllic Fantasy Nature/Scripts/BushLeafTrigger.cs" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="Assets/Shaders/SemiconGrassBillboard.shader" />
+    <None Include="Assets/Idyllic Fantasy Nature/Shader/CustomLighting.hlsl" />
   </ItemGroup>
   <ItemGroup>
     <Reference Include="UnityEngine">
