@@ -1,0 +1,11 @@
+Concrete Pavement 02 by Poly Haven
+Source: https://polyhaven.com/a/concrete_pavement_02
+License: CC0 1.0 Universal (Public Domain)
+Downloaded resolution: 2K JPG PBR maps
+
+Included maps:
+- Base Color
+- OpenGL Normal
+- Ambient Occlusion
+- Roughness (source/reference)
+- Height/Displacement

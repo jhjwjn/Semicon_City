@@ -62,9 +62,11 @@
     <Compile Include="Assets/IgniteCoders/Simple Water Shader/Resources/WaterReflection.cs" />
     <Compile Include="Assets/Idyllic Fantasy Nature/Scripts/ExitGame.cs" />
     <Compile Include="Assets/Scripts/Park/GrassScatterGenerator.cs" />
+    <Compile Include="Assets/Scripts/Road/AdjustableSplineWalkway.cs" />
     <Compile Include="Assets/Idyllic Fantasy Nature/Scripts/BushLeafTrigger.cs" />
   </ItemGroup>
   <ItemGroup>
+    <None Include="Assets/Materials/Walkway/ConcretePavement02/LICENSE_SOURCE.txt" />
     <None Include="Assets/Shaders/SemiconGrassBillboard.shader" />
     <None Include="Assets/Idyllic Fantasy Nature/Shader/CustomLighting.hlsl" />
   </ItemGroup>
