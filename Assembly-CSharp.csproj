@@ -52,6 +52,7 @@
     <Compile Include="Assets/Idyllic Fantasy Nature/Scripts/PlayerMovement.cs" />
     <Compile Include="Assets/Scripts/Park/TerrainGrassDetailPainter.cs" />
     <Compile Include="Assets/Idyllic Fantasy Nature/Scripts/VegetationBendControl.cs" />
+    <Compile Include="Assets/Scripts/Park/CentralPocketParkAssetPlacer.cs" />
     <Compile Include="Assets/Scripts/Park/SplineWalkwayGenerator.cs" />
     <Compile Include="Assets/Scripts/Road/RoadLine_Generator.cs" />
     <Compile Include="Assets/Idyllic Fantasy Nature/Scripts/WindControl.cs" />
