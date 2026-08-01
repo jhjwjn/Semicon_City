@@ -1,0 +1,199 @@
+import bpy
+import math
+
+# =====================================
+# 1. SCENE CLEANUP (초기화)
+# =====================================
+if bpy.context.object and bpy.context.object.mode != 'OBJECT':
+    bpy.ops.object.mode_set(mode='OBJECT')
+
+bpy.ops.object.select_all(action='DESELECT')
+for obj in bpy.context.scene.objects:
+    if any(k in obj.name for k in ["Counter", "POS", "Printer", "Fence", "Door", "Hinge", "Extension", "Drawer", "Riser", "Equipment"]):
+        obj.select_set(True)
+bpy.ops.object.delete()
+
+# =====================================
+# 2. HELPER FUNCTIONS & MATERIAL CREATION
+# =====================================
+def get_principled_bsdf(mat):
+    if not mat.use_nodes or not mat.node_tree:
+        mat.use_nodes = True
+    for node in mat.node_tree.nodes:
+        if node.type == 'BSDF_PRINCIPLED':
+            return node
+    return mat.node_tree.nodes.new(type='ShaderNodeBsdfPrincipled')
+
+def create_material(name_str, color_rgba, roughness=0.5, metallic=0.0):
+    mat = bpy.data.materials.new(name=name_str)
+    mat.use_nodes = True
+    bsdf = get_principled_bsdf(mat)
+    if bsdf:
+        bsdf.inputs['Base Color'].default_value = color_rgba
+        bsdf.inputs['Roughness'].default_value = roughness
+        bsdf.inputs['Metallic'].default_value = metallic
+    return mat
+
+def make_box_with_mat(name_str, loc, dim, mat):
+    bpy.ops.mesh.primitive_cube_add(size=1.0, location=loc)
+    obj = bpy.context.active_object
+    obj.name = name_str
+    obj.dimensions = dim
+    
+    bpy.ops.object.transform_apply(location=False, rotation=False, scale=True)
+    obj.data.materials.append(mat)
+    return obj
+
+# =====================================
+# 3. COLOR & MATERIAL DEFINITIONS (이미지 씬 맞춤형)
+# =====================================
+# 씬 매칭 RGBA 컬러
+COLOR_MAIN_BODY      = (0.82, 0.84, 0.86, 1.0)  # 씬 내 화이트/그레이 가구들과 맞춘 메인 바디
+COLOR_SAND_WOOD      = (0.68, 0.53, 0.38, 1.0)  # 진열대 우드/박스 색감과 어울리는 샌드/메이플 우드
+COLOR_DEVICE_SLATE   = (0.12, 0.15, 0.20, 1.0)  # 다크 슬레이트 블루-그레이 (기계)
+COLOR_SCREEN_GLOSS   = (0.02, 0.03, 0.05, 1.0)  # 화면
+COLOR_HANDLE_WHITE   = (0.92, 0.93, 0.95, 1.0)  # 서랍 손잡이 (깔끔한 밝은 톤)
+COLOR_HOLE_BLACK     = (0.01, 0.01, 0.01, 1.0)
+
+# 재질 생성
+mat_main_body  = create_material("Mat_Counter_Body", COLOR_MAIN_BODY, roughness=0.60)
+mat_sand_wood  = create_material("Mat_Sand_Wood_Accent", COLOR_SAND_WOOD, roughness=0.50)
+mat_device     = create_material("Mat_Device_Slate", COLOR_DEVICE_SLATE, roughness=0.40, metallic=0.1)
+mat_screen     = create_material("Mat_POS_Screen", COLOR_SCREEN_GLOSS, roughness=0.15)
+mat_handle     = create_material("Mat_Handle_White", COLOR_HANDLE_WHITE, roughness=0.40)
+mat_hole       = create_material("Mat_Slot_Hole", COLOR_HOLE_BLACK, roughness=0.90)
+
+# =====================================
+# 4. BASE CONFIG & DIMENSIONS
+# =====================================
+SCALE = 1.05 / 0.63  # 약 1.667배
+
+counter_h = 0.63 * SCALE      # 1.05m
+counter_w = 1.30 * SCALE      # 2.167m
+counter_d = 0.50 * SCALE      # 0.833m
+wall_t    = 0.025 * SCALE     # 0.042m
+
+counter_x = 0.0
+counter_y = 0.0
+
+inner_h = counter_h - (wall_t * 2)
+side_d  = counter_d - wall_t
+mid_z   = counter_h / 2.0
+
+# =====================================
+# 5. CHECKOUT COUNTER BODY (메인 웜그레이/화이트)
+# =====================================
+make_box_with_mat("Counter_Top", (counter_x, counter_y, counter_h - wall_t/2), (counter_w, counter_d, wall_t), mat_main_body)
+make_box_with_mat("Counter_Bottom", (counter_x, counter_y, wall_t/2), (counter_w, counter_d, wall_t), mat_main_body)
+
+front_y = -counter_d/2 + wall_t/2
+make_box_with_mat("Counter_Front_Lower", (counter_x, front_y, mid_z), (counter_w, wall_t, inner_h), mat_main_body)
+
+backpanel_above_h = 0.12 * SCALE
+backpanel_z = counter_h + (backpanel_above_h / 2.0)
+make_box_with_mat("Counter_Front_BackPanel", (counter_x, front_y, backpanel_z), (counter_w, wall_t, backpanel_above_h), mat_main_body)
+
+right_x = counter_x + counter_w/2 - wall_t/2
+right_y = counter_y + wall_t/2
+make_box_with_mat("Counter_Right_End", (right_x, right_y, mid_z), (wall_t, side_d, inner_h), mat_main_body)
+
+# =====================================
+# 6. DRAWER MODULE (우드 포인트 서랍)
+# =====================================
+drawer_section_w = (counter_w - wall_t) / 3.0
+drawer_right_inner_x = counter_x + counter_w/2 - wall_t
+drawer_left_wall_x = drawer_right_inner_x - drawer_section_w
+
+make_box_with_mat("Drawer_Left_Wall", (drawer_left_wall_x, right_y, mid_z), (wall_t, side_d, inner_h), mat_main_body)
+
+drawer_w = drawer_section_w - wall_t - (0.004 * SCALE)
+drawer_x = drawer_left_wall_x + (wall_t / 2) + (drawer_section_w / 2)
+
+gap = 0.003 * SCALE
+num_drawers = 3
+total_gap = gap * (num_drawers + 1)
+drawer_h = (inner_h - total_gap) / num_drawers
+
+drawer_d = 0.02 * SCALE
+drawer_y = counter_y + (counter_d / 2) - (drawer_d / 2) - (0.005 * SCALE)
+
+for i in range(num_drawers):
+    drawer_z = wall_t + gap + (drawer_h / 2) + i * (drawer_h + gap)
+    # 은은하게 눈에 띄는 샌드 우드 톤 서랍
+    make_box_with_mat(f"Drawer_Front_{i+1}", (drawer_x, drawer_y, drawer_z), (drawer_w, drawer_d, drawer_h), mat_sand_wood)
+    
+    handle_w = min(0.10 * SCALE, drawer_w * 0.4)
+    handle_d = 0.015 * SCALE
+    handle_h = 0.02 * SCALE
+    handle_y = drawer_y + (drawer_d / 2) + (handle_d / 2)
+    make_box_with_mat(f"Drawer_Handle_{i+1}", (drawer_x, handle_y, drawer_z), (handle_w, handle_d, handle_h), mat_handle)
+
+# =====================================
+# 7. EXTENDED RISER STAND (우드 포인트 받침대)
+# =====================================
+riser_w = counter_w * 0.72
+riser_d = 0.32 * SCALE
+riser_h = 0.08 * SCALE
+riser_t = 0.015 * SCALE
+
+riser_x = counter_x - (0.05 * SCALE)
+riser_y = front_y + (wall_t / 2) + (riser_d / 2) + 0.001
+riser_base_z = counter_h
+
+# 서랍과 동일한 샌드 우드 톤으로 통일감 부여
+make_box_with_mat("Equipment_Riser_Top", (riser_x, riser_y, riser_base_z + riser_h - riser_t/2), (riser_w, riser_d, riser_t), mat_sand_wood)
+make_box_with_mat("Equipment_Riser_Leg_Left", (riser_x - riser_w/2 + riser_t/2, riser_y, riser_base_z + (riser_h - riser_t)/2), (riser_t, riser_d, riser_h - riser_t), mat_sand_wood)
+make_box_with_mat("Equipment_Riser_Leg_Right", (riser_x + riser_w/2 - riser_t/2, riser_y, riser_base_z + (riser_h - riser_t)/2), (riser_t, riser_d, riser_h - riser_t), mat_sand_wood)
+
+# =====================================
+# 8. EQUIPMENT ON RISER (다크 슬레이트 기계류)
+# =====================================
+equipment_base_z = counter_h + riser_h
+
+# [POS 포스기]
+pos_x = riser_x - (0.20 * SCALE)
+pos_y = riser_y + (0.02 * SCALE)
+
+pos_base_h = 0.03 * SCALE
+make_box_with_mat("POS_Base", (pos_x, pos_y, equipment_base_z + pos_base_h/2), (0.20 * SCALE, 0.18 * SCALE, pos_base_h), mat_device)
+
+pos_stand_h = 0.15 * SCALE
+stand_z = equipment_base_z + pos_base_h + (pos_stand_h / 2)
+make_box_with_mat("POS_Stand", (pos_x, pos_y - (0.02 * SCALE), stand_z), (0.07 * SCALE, 0.07 * SCALE, pos_stand_h), mat_device)
+
+screen_center_z = equipment_base_z + pos_base_h + pos_stand_h
+bpy.ops.mesh.primitive_cube_add(size=1.0, location=(pos_x, pos_y + (0.01 * SCALE), screen_center_z))
+pos_screen = bpy.context.active_object
+pos_screen.name = "POS_Screen"
+pos_screen.dimensions = (0.30 * SCALE, 0.02 * SCALE, 0.22 * SCALE)
+bpy.ops.object.transform_apply(location=False, rotation=False, scale=True)
+pos_screen.rotation_euler = (math.radians(18), 0, 0)
+pos_screen.data.materials.append(mat_screen)
+
+make_box_with_mat("POS_CardReader", (pos_x - (0.165 * SCALE), pos_y + (0.01 * SCALE), screen_center_z), (0.03 * SCALE, 0.07 * SCALE, 0.13 * SCALE), mat_device)
+
+# [영수증 프린터]
+printer_x = riser_x + (0.22 * SCALE)
+printer_y = riser_y
+printer_h = 0.12 * SCALE
+
+make_box_with_mat("Receipt_Printer", (printer_x, printer_y, equipment_base_z + printer_h/2), (0.13 * SCALE, 0.16 * SCALE, printer_h), mat_device)
+
+slot_z = equipment_base_z + printer_h + 0.0015
+make_box_with_mat("Printer_PaperSlot", (printer_x, printer_y + (0.02 * SCALE), slot_z), (0.08 * SCALE, 0.015 * SCALE, 0.003 * SCALE), mat_hole)
+
+# =====================================
+# 9. BEVEL MODIFIER
+# =====================================
+def apply_bevel_to_all(bevel_width=0.002 * SCALE, segments=2):
+    for obj in bpy.context.scene.objects:
+        if obj.type == 'MESH':
+            bev = obj.modifiers.new(name="Bevel", type='BEVEL')
+            bev.width = bevel_width
+            bev.segments = segments
+            bev.limit_method = 'ANGLE'
+            bev.angle_limit = math.radians(30)
+
+apply_bevel_to_all()
+
+print("SUCCESS: HARMONIZED COLOR PALETTE APPLIED TO MATCH THE SCENE ENVIRONMENT!")
