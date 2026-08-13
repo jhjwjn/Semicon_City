@@ -6,7 +6,40 @@ EditorBuildSettings:
   serializedVersion: 2
   m_Scenes:
   - enabled: 1
-    path: Assets/Scenes/SampleScene.unity
-    guid: 99c9720ab356a0642a771bea13969a05
+    path: Assets/SemiconGame/Scenes/SemiconCity_Playable.unity
+    guid: 5b3aaaa7ddfe3cc4db7e9f4586204f66
+  - enabled: 1
+    path: Assets/SemiconGame/Scenes/Interiors/Semicon_Interior_01_Wafer.unity
+    guid: 880ff9ba441469f489f3aee1ce336f62
+  - enabled: 1
+    path: Assets/SemiconGame/Scenes/Interiors/Semicon_Interior_02_Oxidation.unity
+    guid: 4f993ab62ceddd04da615eba32ff5f87
+  - enabled: 1
+    path: Assets/SemiconGame/Scenes/Interiors/Semicon_Interior_03_Photo.unity
+    guid: 23bfb51c9b300084cbae71c68d990788
+  - enabled: 1
+    path: Assets/SemiconGame/Scenes/Interiors/Semicon_Interior_04_Etch.unity
+    guid: 61b191bac079fac4c93a9a4a24a4c942
+  - enabled: 1
+    path: Assets/SemiconGame/Scenes/Interiors/Semicon_Interior_05_Deposition.unity
+    guid: 3eccab0ccb6bc964394cd83d65257bcb
+  - enabled: 1
+    path: Assets/SemiconGame/Scenes/Interiors/Semicon_Interior_06_Metal.unity
+    guid: 4bb75a7aa2c773a40a380fbaaaf38c43
+  - enabled: 1
+    path: Assets/SemiconGame/Scenes/Interiors/Semicon_Interior_07_EDS.unity
+    guid: 87173f99a47c0a84a9bb0dceab6442c2
+  - enabled: 1
+    path: Assets/SemiconGame/Scenes/Interiors/Semicon_Interior_08_Package.unity
+    guid: 119522cd8cd4ac04ba9f6486376be5e6
+  - enabled: 1
+    path: Assets/SemiconGame/Scenes/Interiors/Semicon_Interior_Factory.unity
+    guid: ca322e16706b31e4ebf689c12819404e
+  - enabled: 1
+    path: Assets/SemiconGame/Scenes/Interiors/Semicon_Interior_Market.unity
+    guid: 78e72fbc74026cf40b465d114d44be5b
+  - enabled: 1
+    path: Assets/SemiconGame/Scenes/Interiors/Semicon_Interior_Workspace.unity
+    guid: b034f34631fe5fe48897c4412f3a4fac
   m_configObjects:
     com.unity.input.settings.actions: {fileID: -944628639613478452, guid: 052faaac586de48259a63d0c4782560b, type: 3}
