@@ -7,7 +7,7 @@ namespace SemiconCity.Game
 {
     public sealed class EdsExperimentPanel : MonoBehaviour
     {
-        private const int ExperimentCost = 8;
+        private const int ExperimentCost = SemiconGameState.ExperimentCreditCost;
 
         [SerializeField] private CanvasGroup panelGroup;
         [SerializeField] private RectTransform panelFrame;
@@ -101,9 +101,9 @@ namespace SemiconCity.Game
         {
             if (isRunning) return;
             var state = SemiconGameState.Instance;
-            if (state == null || !state.TrySpendResearch(ExperimentCost))
+            if (state == null || !state.TrySpendCredits(ExperimentCost))
             {
-                hud?.ShowToast($"연구 데이터가 부족합니다. 실험에는 {ExperimentCost}개가 필요합니다.");
+                hud?.ShowToast($"실험 비용이 부족합니다. 1회에 ₩{ExperimentCost:N0}이 필요합니다.");
                 return;
             }
             StartCoroutine(RunExperimentSequence());
@@ -116,7 +116,7 @@ namespace SemiconCity.Game
             if (resultStatusText != null)
             {
                 resultStatusText.text = "PROBE TEST ACTIVE  /  다이 전기 특성 판정 중";
-                resultStatusText.color = new Color32(41, 211, 207, 255);
+                resultStatusText.color = SemiconUiPalette.Blue;
             }
 
             if (probeScanLine != null)
@@ -168,10 +168,10 @@ namespace SemiconCity.Game
                         ? "NEAR TEST WINDOW  /  검출률과 오판정률의 균형을 조정하세요."
                         : "OUT OF TEST WINDOW  /  전압과 누설 기준을 다시 조정하세요.";
                 resultStatusText.color = qualified
-                    ? new Color32(247, 169, 30, 255)
+                    ? SemiconUiPalette.Amber
                     : detection >= 88f
-                        ? new Color32(41, 211, 207, 255)
-                        : new Color32(238, 103, 89, 255);
+                        ? SemiconUiPalette.Mint
+                        : SemiconUiPalette.Danger;
             }
 
             SemiconGameState.Instance?.RecordEdsExperiment(voltage, leakageThreshold, yield, detection,
@@ -195,7 +195,7 @@ namespace SemiconCity.Game
             {
                 recipeText.text = state.EdsExperimentCount == 0
                     ? "아직 저장된 EDS 실험 데이터가 없습니다.\n첫 실험을 실행해 검사창을 탐색하세요."
-                    : $"BEST RUN  #{state.EdsExperimentCount:00}\n\n테스트 전압 {state.BestEdsVoltage} V\n누설 기준   {state.BestEdsLeakageThreshold} μA\n\n양품 수율   {state.BestEdsYield:0.0}%\n결함 검출률 {state.BestEdsDetection:0.0}%\n오판정률    {state.BestEdsFalseReject:0.0}%\n\n{(state.EdsRecipeQualified ? "● EDS-01 레시피 등록 완료" : "○ 검사 범위 탐색 중")}";
+                    : $"등록 레시피  {state.GetRecipeVariantCount(SemiconRecipeKind.TestedWafer)}개\nBEST RUN  #{state.EdsExperimentCount:00}\n\n테스트 전압 {state.BestEdsVoltage} V\n누설 기준   {state.BestEdsLeakageThreshold} μA\n\n양품 수율   {state.BestEdsYield:0.0}%\n결함 검출률 {state.BestEdsDetection:0.0}%\n오판정률    {state.BestEdsFalseReject:0.0}%\n\n{(state.EdsRecipeQualified ? "● 합격 조건은 각각 레시피로 저장됩니다" : "○ 검사 범위 탐색 중")}";
             }
             if (experimentCountText != null)
                 experimentCountText.text = $"EXPERIMENT LOG  /  {state.EdsExperimentCount:00}";

@@ -113,7 +113,7 @@ namespace SemiconCity.Game
             {
                 hud?.ShowToast(reason); return;
             }
-            hud?.ShowToast($"{definition.Code} 납품 완료  ·  ₩{definition.CreditReward:N0}  ·  연구 +{definition.ResearchReward}", 4f);
+            hud?.ShowToast($"{definition.Code} 납품 완료  ·  ₩{definition.CreditReward:N0}", 4f);
         }
 
         private void Refresh()
@@ -134,7 +134,7 @@ namespace SemiconCity.Game
                 requirementText.text = $"납품 품목   {SemiconFactoryDefinitions.GetRecipeName(definition.RequiredRecipe)}\n" +
                                        $"필요 수량   {stock} / {definition.RequiredAmount}\n" +
                                        $"평균 품질   {quality} / {definition.MinimumQuality} 이상";
-            if (rewardText != null) rewardText.text = $"₩ {definition.CreditReward:N0}\n연구 데이터  +{definition.ResearchReward}";
+            if (rewardText != null) rewardText.text = $"납품 보상\n₩ {definition.CreditReward:N0}";
             if (statusText != null)
                 statusText.text = active ? "ACTIVE CONTRACT  /  납품 준비 중" :
                     state.GetContractCompletionCount(selected) > 0 ? $"COMPLETED  /  누적 {state.GetContractCompletionCount(selected)}회" :
@@ -155,10 +155,8 @@ namespace SemiconCity.Game
                 var label = contractButtons[index]?.GetComponentInChildren<Text>(true);
                 if (label != null) label.text = $"{item.Code}  {(state.IsContractUnlocked(item.Kind) ? item.Name : "LOCKED")}" +
                                                    (selected == item.Kind ? "  ◀" : string.Empty);
-                var graphic = contractButtons[index]?.targetGraphic;
-                if (graphic != null) graphic.color = selected == item.Kind
-                    ? new Color32(31, 190, 185, 255)
-                    : index <= 5 ? new Color32(6, 72, 77, 255) : new Color32(92, 61, 12, 255);
+                SemiconUiPalette.SetButtonSelection(contractButtons[index], selected == item.Kind,
+                    !state.IsContractUnlocked(item.Kind));
             }
         }
 

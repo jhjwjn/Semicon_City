@@ -105,7 +105,11 @@ namespace SemiconCity.Editor
                 Require<SemiconMarketTerminal>(scene, errors);
                 Require<SemiconContractTerminal>(scene, errors);
             }
-            else if (name.Contains("Workspace")) Require<SemiconArchiveTerminal>(scene, errors);
+            else if (name.Contains("Workspace"))
+            {
+                Require<SemiconArchiveTerminal>(scene, errors);
+                Require<SemiconGachaTerminal>(scene, errors);
+            }
         }
 
         private static void Require<T>(Scene scene, ICollection<string> errors) where T : Component

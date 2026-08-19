@@ -7,7 +7,7 @@ namespace SemiconCity.Game
 {
     public sealed class DepositionExperimentPanel : MonoBehaviour
     {
-        private const int ExperimentCost = 8;
+        private const int ExperimentCost = SemiconGameState.ExperimentCreditCost;
 
         [SerializeField] private CanvasGroup panelGroup;
         [SerializeField] private RectTransform panelFrame;
@@ -101,9 +101,9 @@ namespace SemiconCity.Game
         {
             if (isRunning) return;
             var state = SemiconGameState.Instance;
-            if (state == null || !state.TrySpendResearch(ExperimentCost))
+            if (state == null || !state.TrySpendCredits(ExperimentCost))
             {
-                hud?.ShowToast($"연구 데이터가 부족합니다. 실험에는 {ExperimentCost}개가 필요합니다.");
+                hud?.ShowToast($"실험 비용이 부족합니다. 1회에 ₩{ExperimentCost:N0}이 필요합니다.");
                 return;
             }
             StartCoroutine(RunExperimentSequence());
@@ -116,7 +116,7 @@ namespace SemiconCity.Game
             if (resultStatusText != null)
             {
                 resultStatusText.text = "CHAMBER ACTIVE  /  박막 성장 결과 분석 중";
-                resultStatusText.color = new Color32(41, 211, 207, 255);
+                resultStatusText.color = SemiconUiPalette.Blue;
             }
 
             if (depositionLine != null)
@@ -169,10 +169,10 @@ namespace SemiconCity.Game
                         ? "NEAR PROCESS WINDOW  /  목표 박막 두께에 더 가깝게 조정하세요."
                         : "OUT OF PROCESS WINDOW  /  온도와 챔버 압력을 다시 조정하세요.";
                 resultStatusText.color = qualified
-                    ? new Color32(247, 169, 30, 255)
+                    ? SemiconUiPalette.Amber
                     : uniformity >= 84f
-                        ? new Color32(41, 211, 207, 255)
-                        : new Color32(238, 103, 89, 255);
+                        ? SemiconUiPalette.Mint
+                        : SemiconUiPalette.Danger;
             }
 
             SemiconGameState.Instance?.RecordDepositionExperiment(temperature, pressure, thickness, uniformity,
@@ -196,7 +196,7 @@ namespace SemiconCity.Game
             {
                 recipeText.text = state.DepositionExperimentCount == 0
                     ? "아직 저장된 증착 실험 데이터가 없습니다.\n첫 실험을 실행해 공정창을 탐색하세요."
-                    : $"BEST RUN  #{state.DepositionExperimentCount:00}\n\n증착 온도   {state.BestDepositionTemperature} °C\n챔버 압력   {state.BestDepositionPressure} Torr\n\n박막 두께   {state.BestDepositionThickness:0.0} nm\n균일도      {state.BestDepositionUniformity:0.0}%\n단차 피복성 {state.BestDepositionCoverage:0.0}%\n\n{(state.DepositionRecipeQualified ? "● DEPO-01 레시피 등록 완료" : "○ 안정 범위 탐색 중")}";
+                    : $"등록 레시피  {state.GetRecipeVariantCount(SemiconRecipeKind.DepositedWafer)}개\nBEST RUN  #{state.DepositionExperimentCount:00}\n\n증착 온도   {state.BestDepositionTemperature} °C\n챔버 압력   {state.BestDepositionPressure} Torr\n\n박막 두께   {state.BestDepositionThickness:0.0} nm\n균일도      {state.BestDepositionUniformity:0.0}%\n단차 피복성 {state.BestDepositionCoverage:0.0}%\n\n{(state.DepositionRecipeQualified ? "● 합격 조건은 각각 레시피로 저장됩니다" : "○ 안정 범위 탐색 중")}";
             }
             if (experimentCountText != null)
                 experimentCountText.text = $"EXPERIMENT LOG  /  {state.DepositionExperimentCount:00}";

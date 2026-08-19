@@ -7,7 +7,7 @@ namespace SemiconCity.Game
 {
     public sealed class PackageExperimentPanel : MonoBehaviour
     {
-        private const int ExperimentCost = 8;
+        private const int ExperimentCost = SemiconGameState.ExperimentCreditCost;
 
         [SerializeField] private CanvasGroup panelGroup;
         [SerializeField] private RectTransform panelFrame;
@@ -102,9 +102,9 @@ namespace SemiconCity.Game
         {
             if (isRunning) return;
             var state = SemiconGameState.Instance;
-            if (state == null || !state.TrySpendResearch(ExperimentCost))
+            if (state == null || !state.TrySpendCredits(ExperimentCost))
             {
-                hud?.ShowToast($"연구 데이터가 부족합니다. 실험에는 {ExperimentCost}개가 필요합니다.");
+                hud?.ShowToast($"실험 비용이 부족합니다. 1회에 ₩{ExperimentCost:N0}이 필요합니다.");
                 return;
             }
             StartCoroutine(RunExperimentSequence());
@@ -117,7 +117,7 @@ namespace SemiconCity.Game
             if (resultStatusText != null)
             {
                 resultStatusText.text = "PACKAGE RELIABILITY TEST  /  본딩 및 몰딩 신뢰성 분석 중";
-                resultStatusText.color = new Color32(41, 211, 207, 255);
+                resultStatusText.color = SemiconUiPalette.Blue;
             }
 
             if (sealScanLine != null)
@@ -169,10 +169,10 @@ namespace SemiconCity.Game
                         ? "NEAR PROCESS WINDOW  /  본딩 강도와 몰딩 온도의 균형을 조정하세요."
                         : "OUT OF PROCESS WINDOW  /  패키지 균열과 접합 불량 위험이 높습니다.";
                 resultStatusText.color = qualified
-                    ? new Color32(247, 169, 30, 255)
+                    ? SemiconUiPalette.Amber
                     : finalPass >= 88f
-                        ? new Color32(41, 211, 207, 255)
-                        : new Color32(238, 103, 89, 255);
+                        ? SemiconUiPalette.Mint
+                        : SemiconUiPalette.Danger;
             }
 
             SemiconGameState.Instance?.RecordPackageExperiment(bondingForce, moldingTemperature,
@@ -196,7 +196,7 @@ namespace SemiconCity.Game
             {
                 recipeText.text = state.PackageExperimentCount == 0
                     ? "아직 저장된 패키징 실험 데이터가 없습니다.\n첫 실험을 실행해 공정창을 탐색하세요."
-                    : $"BEST RUN  #{state.PackageExperimentCount:00}\n\n본딩 압력   {state.BestPackageBondingForce} gf\n몰딩 온도   {state.BestPackageMoldingTemperature} °C\n\n본딩 강도   {state.BestPackageBondStrength:0.0}%\n패키지 무결성 {state.BestPackageIntegrity:0.0}%\n최종 합격률 {state.BestPackageFinalPass:0.0}%\n\n{(state.PackageRecipeQualified ? "● PACKAGE-01 레시피 등록 완료" : "○ 패키징 공정창 탐색 중")}";
+                    : $"등록 레시피  {state.GetRecipeVariantCount(SemiconRecipeKind.Sc01ControlSensor)}개\nBEST RUN  #{state.PackageExperimentCount:00}\n\n본딩 압력   {state.BestPackageBondingForce} gf\n몰딩 온도   {state.BestPackageMoldingTemperature} °C\n\n본딩 강도   {state.BestPackageBondStrength:0.0}%\n패키지 무결성 {state.BestPackageIntegrity:0.0}%\n최종 합격률 {state.BestPackageFinalPass:0.0}%\n\n{(state.PackageRecipeQualified ? "● 합격 조건은 각각 레시피로 저장됩니다" : "○ 패키징 공정창 탐색 중")}";
             }
             if (experimentCountText != null)
                 experimentCountText.text = $"EXPERIMENT LOG  /  {state.PackageExperimentCount:00}";

@@ -56,19 +56,23 @@ namespace SemiconCity.Game
                 return sharedKoreanFont;
             }
 
-            // Unity reads the installed Noto Sans KR variable font at its thinnest
-            // instance on some Windows machines. Use a static Korean face so that
-            // glyph weight and vertical metrics remain stable in every UI state.
-            const string hancomGothicPath = @"C:\Windows\Fonts\Hancom Gothic Regular.ttf";
-            if (File.Exists(hancomGothicPath))
+            // Use one modern Korean family for every label. A larger SDF atlas and
+            // calibrated synthetic weights keep small captions clean while avoiding
+            // the loose vertical metrics of the previous Hancom Gothic runtime font.
+            const string koreanUiFontPath = @"C:\Windows\Fonts\malgun.ttf";
+            if (File.Exists(koreanUiFontPath))
             {
-                sharedKoreanFont = TMP_FontAsset.CreateFontAsset(hancomGothicPath, 0, 84, 10,
-                    GlyphRenderMode.SDFAA, 1024, 1024);
+                sharedKoreanFont = TMP_FontAsset.CreateFontAsset(koreanUiFontPath, 0, 112, 12,
+                    GlyphRenderMode.SDFAA, 4096, 4096);
                 if (sharedKoreanFont != null)
                 {
-                    sharedKoreanFont.name = "Semicon UI SDF / Hancom Gothic Regular";
+                    sharedKoreanFont.name = "Semicon UI SDF / Malgun Gothic";
                     sharedKoreanFont.isMultiAtlasTexturesEnabled = true;
-                    Debug.Log("[Semicon Font] Hancom Gothic Regular SDF loaded.");
+                    sharedKoreanFont.normalStyle = 0.45f;
+                    sharedKoreanFont.boldStyle = 0.9f;
+                    sharedKoreanFont.boldSpacing = 0.5f;
+                    sharedKoreanFont.normalSpacingOffset = 0f;
+                    Debug.Log("[Semicon Font] Malgun Gothic high-resolution SDF loaded.");
                     return sharedKoreanFont;
                 }
             }

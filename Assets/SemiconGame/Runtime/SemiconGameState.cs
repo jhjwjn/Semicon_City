@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using UnityEngine;
 
@@ -6,10 +7,11 @@ namespace SemiconCity.Game
 {
     public sealed class SemiconGameState : MonoBehaviour
     {
+        private const int MaxRecipeVariantsPerProcess = 8;
+
         [Serializable]
         private sealed class SaveData
         {
-            public int researchPoints = 120;
             public int credits = 25000;
             public float bestYield;
             public float bestPrecision;
@@ -89,12 +91,19 @@ namespace SemiconCity.Game
             public int metalizedWaferQualityPoints;
             public int testedWaferStock;
             public int testedWaferQualityPoints;
+            public SemiconRecipeVariantData[] recipeVariants;
             public SemiconFactorySlotData[] factorySlots;
+            public bool gachaInventoryInitialized;
+            public int[] robotInventory;
+            public int[] robotEnhancementInventory;
+            public int robotProcessRewardMask;
+            public int[] diskInventory;
+            public int robotDrawCount;
+            public int diskDrawCount;
         }
 
         public static SemiconGameState Instance { get; private set; }
 
-        [SerializeField] private int researchPoints = 120;
         [SerializeField] private int credits = 25000;
         [SerializeField] private float bestYield;
         [SerializeField] private float bestPrecision;
@@ -174,12 +183,19 @@ namespace SemiconCity.Game
         [SerializeField] private int metalizedWaferQualityPoints;
         [SerializeField] private int testedWaferStock;
         [SerializeField] private int testedWaferQualityPoints;
+        [SerializeField] private SemiconRecipeVariantData[] recipeVariants = Array.Empty<SemiconRecipeVariantData>();
         [SerializeField] private SemiconFactorySlotData[] factorySlots;
+        [SerializeField] private bool gachaInventoryInitialized;
+        [SerializeField] private int[] robotInventory;
+        [SerializeField] private int[] robotEnhancementInventory;
+        [SerializeField] private int robotProcessRewardMask;
+        [SerializeField] private int[] diskInventory;
+        [SerializeField] private int robotDrawCount;
+        [SerializeField] private int diskDrawCount;
         private bool suppressPersistence;
 
         public event Action StateChanged;
 
-        public int ResearchPoints => researchPoints;
         public int Credits => credits;
         public float BestYield => bestYield;
         public float BestPrecision => bestPrecision;
@@ -273,18 +289,21 @@ namespace SemiconCity.Game
             : 80;
         public int AveragePm10Quality => pm10Stock > 0 ? pm10QualityPoints / pm10Stock : 80;
         public int AverageDd20Quality => dd20Stock > 0 ? dd20QualityPoints / dd20Stock : 80;
+        public int RobotDrawCount => robotDrawCount;
+        public int DiskDrawCount => diskDrawCount;
 
         public const int SiliconUnitPrice = 180;
         public const int ProcessGasUnitPrice = 130;
         public const int ChemicalUnitPrice = 95;
         public const int MetalTargetUnitPrice = 240;
         public const int FinishedProductSalePrice = 4200;
+        public const int Pm10SalePrice = 7200;
+        public const int Dd20SalePrice = 9800;
+        public const int ExperimentCreditCost = 800;
         public const int PackageTestedWaferCost = 1;
         public const int PackageChemicalCost = 1;
         public const int FirstTutorialCreditReward = 1500;
-        public const int FirstTutorialResearchReward = 12;
         public const int FirstOrderCreditReward = 9000;
-        public const int FirstOrderResearchReward = 30;
         public const int WaferSiliconCost = 2;
         public const int OxidationWaferCost = 1;
         public const int OxidationGasCost = 1;
@@ -319,17 +338,19 @@ namespace SemiconCity.Game
                 Load();
             }
             EnsureFactorySlots();
+            EnsureGachaInventory();
             EnsureProgressArrays();
+            EnsureRecipeVariantsFromLegacy();
         }
 
-        public bool TrySpendResearch(int amount)
+        public bool TrySpendCredits(int amount)
         {
-            if (amount <= 0 || researchPoints < amount)
+            if (amount <= 0 || credits < amount)
             {
                 return false;
             }
 
-            researchPoints -= amount;
+            credits -= amount;
             SaveAndNotify();
             return true;
         }
@@ -337,10 +358,11 @@ namespace SemiconCity.Game
         public bool CompleteFirstTutorial()
         {
             if (firstTutorialCompleted) return false;
+            var previousUnlocked = UnlockedProcessCount;
             firstTutorialCompleted = true;
             unlockedProcessCount = Math.Max(unlockedProcessCount, 2);
+            GrantProcessRobotRewards(previousUnlocked + 1, UnlockedProcessCount);
             credits += FirstTutorialCreditReward;
-            researchPoints += FirstTutorialResearchReward;
             SaveAndNotify();
             return true;
         }
@@ -391,7 +413,6 @@ namespace SemiconCity.Game
             finishedProductStock--;
             finishedProductQualityPoints = Math.Max(0, finishedProductQualityPoints - qualityRemoved);
             credits += FirstOrderCreditReward;
-            researchPoints += FirstOrderResearchReward;
             firstOrderCompleted = true;
             SaveAndNotify();
             reason = string.Empty;
@@ -499,7 +520,6 @@ namespace SemiconCity.Game
 
             RemoveRecipeStock(definition.RequiredRecipe, definition.RequiredAmount, quality);
             credits += definition.CreditReward;
-            researchPoints += definition.ResearchReward;
             EnsureProgressArrays();
             contractCompletionCounts[(int)kind]++;
             activeContractId = -1;
@@ -540,6 +560,11 @@ namespace SemiconCity.Game
             }
 
             photoRecipeQualified |= qualified;
+            if (qualified)
+            {
+                RegisterRecipeVariant(SemiconRecipeKind.PhotoPatternedWafer, dose, focus, yield, precision, 0f,
+                    Mathf.RoundToInt((yield + precision) * 0.5f));
+            }
             SaveAndNotify();
         }
 
@@ -558,6 +583,12 @@ namespace SemiconCity.Game
             }
 
             oxidationRecipeQualified |= qualified;
+            if (qualified)
+            {
+                var thicknessAccuracy = Mathf.Clamp(100f - Mathf.Abs(thickness - 100f) * 3f, 60f, 100f);
+                RegisterRecipeVariant(SemiconRecipeKind.OxidizedWafer, temperature, processTime, thickness,
+                    uniformity, 0f, Mathf.RoundToInt(uniformity * 0.7f + thicknessAccuracy * 0.3f));
+            }
             SaveAndNotify();
         }
 
@@ -575,6 +606,12 @@ namespace SemiconCity.Game
             }
 
             etchRecipeQualified |= qualified;
+            if (qualified)
+            {
+                var depthAccuracy = Mathf.Clamp(100f - Mathf.Abs(depth - 120f) * 3f, 60f, 100f);
+                RegisterRecipeVariant(SemiconRecipeKind.EtchedWafer, power, gasFlow, depth, profile, 0f,
+                    Mathf.RoundToInt(profile * 0.7f + depthAccuracy * 0.3f));
+            }
             SaveAndNotify();
         }
 
@@ -595,6 +632,13 @@ namespace SemiconCity.Game
             }
 
             depositionRecipeQualified |= qualified;
+            if (qualified)
+            {
+                var thicknessAccuracy = Mathf.Clamp(100f - Mathf.Abs(thickness - 80f) * 4f, 60f, 100f);
+                RegisterRecipeVariant(SemiconRecipeKind.DepositedWafer, temperature, pressure, thickness,
+                    uniformity, coverage,
+                    Mathf.RoundToInt(uniformity * 0.4f + coverage * 0.35f + thicknessAccuracy * 0.25f));
+            }
             SaveAndNotify();
         }
 
@@ -615,6 +659,14 @@ namespace SemiconCity.Game
             }
 
             metalRecipeQualified |= qualified;
+            if (qualified)
+            {
+                var thicknessAccuracy = Mathf.Clamp(100f - Mathf.Abs(thickness - 450f) * 0.8f, 60f, 100f);
+                var resistanceScore = Mathf.Clamp(100f - Mathf.Abs(resistance - 0.1f) * 300f, 60f, 100f);
+                RegisterRecipeVariant(SemiconRecipeKind.MetalizedWafer, power, processTime, thickness, resistance,
+                    adhesion, Mathf.RoundToInt(adhesion * 0.45f + thicknessAccuracy * 0.3f +
+                                               resistanceScore * 0.25f));
+            }
             SaveAndNotify();
         }
 
@@ -634,6 +686,12 @@ namespace SemiconCity.Game
             }
 
             edsRecipeQualified |= qualified;
+            if (qualified)
+            {
+                var rejectScore = Mathf.Clamp(100f - falseReject * 5f, 60f, 100f);
+                RegisterRecipeVariant(SemiconRecipeKind.TestedWafer, voltage, leakageThreshold, yield, detection,
+                    falseReject, Mathf.RoundToInt(yield * 0.35f + detection * 0.45f + rejectScore * 0.2f));
+            }
             SaveAndNotify();
         }
 
@@ -654,7 +712,133 @@ namespace SemiconCity.Game
             }
 
             packageRecipeQualified |= qualified;
+            if (qualified)
+            {
+                RegisterRecipeVariant(SemiconRecipeKind.Sc01ControlSensor, bondingForce, moldingTemperature,
+                    bondStrength, packageIntegrity, finalPass,
+                    Mathf.RoundToInt(bondStrength * 0.3f + packageIntegrity * 0.3f + finalPass * 0.4f));
+            }
             SaveAndNotify();
+        }
+
+        public int GetRecipeVariantCount(SemiconRecipeKind recipe)
+        {
+            var target = NormalizeVariantRecipe(recipe);
+            if (target == SemiconRecipeKind.None || recipeVariants == null) return 0;
+            var count = 0;
+            foreach (var variant in recipeVariants)
+            {
+                if (variant != null && variant.recipe == target) count++;
+            }
+            return count;
+        }
+
+        public SemiconRecipeVariantData GetRecipeVariant(SemiconRecipeKind recipe, int variantIndex)
+        {
+            var target = NormalizeVariantRecipe(recipe);
+            if (target == SemiconRecipeKind.None || recipeVariants == null || variantIndex < 0) return null;
+            var current = 0;
+            foreach (var variant in recipeVariants)
+            {
+                if (variant == null || variant.recipe != target) continue;
+                if (current == variantIndex) return variant;
+                current++;
+            }
+            return null;
+        }
+
+        public int GetRecommendedRecipeVariantIndex(SemiconRecipeKind recipe)
+        {
+            var count = GetRecipeVariantCount(recipe);
+            var bestIndex = count > 0 ? 0 : -1;
+            var bestScore = -1;
+            for (var index = 0; index < count; index++)
+            {
+                var variant = GetRecipeVariant(recipe, index);
+                if (variant == null || variant.qualityScore <= bestScore) continue;
+                bestIndex = index;
+                bestScore = variant.qualityScore;
+            }
+            return bestIndex;
+        }
+
+        private void RegisterRecipeVariant(SemiconRecipeKind recipe, int primaryParameter,
+            float secondaryParameter, float metricA, float metricB, float metricC, int qualityScore)
+        {
+            recipe = NormalizeVariantRecipe(recipe);
+            if (recipe == SemiconRecipeKind.None) return;
+            if (recipeVariants == null) recipeVariants = Array.Empty<SemiconRecipeVariantData>();
+
+            foreach (var existing in recipeVariants)
+            {
+                if (existing == null || existing.recipe != recipe || existing.primaryParameter != primaryParameter ||
+                    Mathf.Abs(existing.secondaryParameter - secondaryParameter) > 0.001f) continue;
+                existing.metricA = metricA;
+                existing.metricB = metricB;
+                existing.metricC = metricC;
+                existing.qualityScore = Mathf.Clamp(qualityScore, 1, 100);
+                return;
+            }
+
+            var nextSerial = 1;
+            foreach (var existing in recipeVariants)
+            {
+                if (existing != null && existing.recipe == recipe)
+                    nextSerial = Math.Max(nextSerial, existing.serial + 1);
+            }
+
+            var expanded = new SemiconRecipeVariantData[recipeVariants.Length + 1];
+            Array.Copy(recipeVariants, expanded, recipeVariants.Length);
+            expanded[expanded.Length - 1] = new SemiconRecipeVariantData
+            {
+                recipe = recipe,
+                serial = nextSerial,
+                primaryParameter = primaryParameter,
+                secondaryParameter = secondaryParameter,
+                metricA = metricA,
+                metricB = metricB,
+                metricC = metricC,
+                qualityScore = Mathf.Clamp(qualityScore, 1, 100)
+            };
+            recipeVariants = expanded;
+            TrimRecipeVariants(recipe);
+        }
+
+        private void TrimRecipeVariants(SemiconRecipeKind recipe)
+        {
+            while (GetRecipeVariantCount(recipe) > MaxRecipeVariantsPerProcess)
+            {
+                var removeIndex = -1;
+                var lowestScore = int.MaxValue;
+                for (var index = 0; index < recipeVariants.Length; index++)
+                {
+                    var variant = recipeVariants[index];
+                    if (variant == null || variant.recipe != recipe || variant.qualityScore >= lowestScore) continue;
+                    lowestScore = variant.qualityScore;
+                    removeIndex = index;
+                }
+                if (removeIndex < 0) return;
+                var reduced = new List<SemiconRecipeVariantData>(recipeVariants);
+                reduced.RemoveAt(removeIndex);
+                recipeVariants = reduced.ToArray();
+            }
+        }
+
+        private static SemiconRecipeKind NormalizeVariantRecipe(SemiconRecipeKind recipe)
+        {
+            return recipe switch
+            {
+                SemiconRecipeKind.OxidizedWafer => recipe,
+                SemiconRecipeKind.PhotoPatternedWafer => recipe,
+                SemiconRecipeKind.EtchedWafer => recipe,
+                SemiconRecipeKind.DepositedWafer => recipe,
+                SemiconRecipeKind.MetalizedWafer => recipe,
+                SemiconRecipeKind.TestedWafer => recipe,
+                SemiconRecipeKind.Sc01ControlSensor => SemiconRecipeKind.Sc01ControlSensor,
+                SemiconRecipeKind.Pm10PowerManagement => SemiconRecipeKind.Sc01ControlSensor,
+                SemiconRecipeKind.Dd20DisplayDriver => SemiconRecipeKind.Sc01ControlSensor,
+                _ => SemiconRecipeKind.None
+            };
         }
 
         public int GetMaterialStock(SemiconMaterialKind kind)
@@ -710,14 +894,76 @@ namespace SemiconCity.Game
             return true;
         }
 
+        public bool TryBuyMaterials(int siliconAmount, int gasAmount, int chemicalAmount,
+            int metalTargetAmount, out int totalPrice, out string reason)
+        {
+            totalPrice = 0;
+            if (siliconAmount < 0 || gasAmount < 0 || chemicalAmount < 0 || metalTargetAmount < 0)
+            {
+                reason = "구매 수량이 올바르지 않습니다.";
+                return false;
+            }
+            if (siliconAmount + gasAmount + chemicalAmount + metalTargetAmount <= 0)
+            {
+                reason = "장바구니에 구매할 자재를 담아주세요.";
+                return false;
+            }
+
+            var calculatedPrice = (long)siliconAmount * SiliconUnitPrice +
+                                  (long)gasAmount * ProcessGasUnitPrice +
+                                  (long)chemicalAmount * ChemicalUnitPrice +
+                                  (long)metalTargetAmount * MetalTargetUnitPrice;
+            if (calculatedPrice > int.MaxValue)
+            {
+                reason = "한 번에 구매할 수 있는 수량을 초과했습니다.";
+                return false;
+            }
+
+            totalPrice = (int)calculatedPrice;
+            if (credits < totalPrice)
+            {
+                reason = $"결제에 ₩ {totalPrice:N0}이 필요합니다. 현재 크레딧은 ₩ {credits:N0}입니다.";
+                return false;
+            }
+
+            credits -= totalPrice;
+            siliconStock += siliconAmount;
+            processGasStock += gasAmount;
+            chemicalStock += chemicalAmount;
+            metalTargetStock += metalTargetAmount;
+            SaveAndNotify();
+            reason = string.Empty;
+            return true;
+        }
+
         public bool TrySellFinishedProducts(int amount)
         {
-            if (amount <= 0 || finishedProductStock < amount) return false;
+            return TrySellProduct(SemiconRecipeKind.Sc01ControlSensor, amount);
+        }
 
-            var unitPrice = GetFinishedProductSalePrice();
-            var qualityRemoved = AverageFinishedProductQuality * amount;
-            finishedProductStock -= amount;
-            finishedProductQualityPoints = Math.Max(0, finishedProductQualityPoints - qualityRemoved);
+        public bool TrySellProduct(SemiconRecipeKind recipe, int amount)
+        {
+            if (amount <= 0 || GetSaleProductStock(recipe) < amount) return false;
+
+            var unitPrice = GetSaleProductPrice(recipe);
+            var qualityRemoved = GetSaleProductQuality(recipe) * amount;
+            switch (recipe)
+            {
+                case SemiconRecipeKind.Pm10PowerManagement:
+                    pm10Stock -= amount;
+                    pm10QualityPoints = Math.Max(0, pm10QualityPoints - qualityRemoved);
+                    break;
+                case SemiconRecipeKind.Dd20DisplayDriver:
+                    dd20Stock -= amount;
+                    dd20QualityPoints = Math.Max(0, dd20QualityPoints - qualityRemoved);
+                    break;
+                case SemiconRecipeKind.Sc01ControlSensor:
+                    finishedProductStock -= amount;
+                    finishedProductQualityPoints = Math.Max(0, finishedProductQualityPoints - qualityRemoved);
+                    break;
+                default:
+                    return false;
+            }
             credits += unitPrice * amount;
             SaveAndNotify();
             return true;
@@ -781,7 +1027,49 @@ namespace SemiconCity.Game
                 remainingSeconds, totalSeconds);
         }
 
+        public int PreviewProductionQuality(int slotIndex, SemiconRecipeKind recipe, int recipeVariantIndex)
+        {
+            var stats = GetProductionStats(slotIndex);
+            var inputQuality = recipe switch
+            {
+                SemiconRecipeKind.OxidizedWafer => AverageWaferQuality,
+                SemiconRecipeKind.PhotoPatternedWafer => AverageOxidizedWaferQuality,
+                SemiconRecipeKind.EtchedWafer => AveragePatternedWaferQuality,
+                SemiconRecipeKind.DepositedWafer => AverageEtchedWaferQuality,
+                SemiconRecipeKind.MetalizedWafer => AverageDepositedWaferQuality,
+                SemiconRecipeKind.TestedWafer => AverageMetalizedWaferQuality,
+                SemiconRecipeKind.Sc01ControlSensor => AverageTestedWaferQuality,
+                SemiconRecipeKind.Pm10PowerManagement => AverageTestedWaferQuality,
+                SemiconRecipeKind.Dd20DisplayDriver => AverageTestedWaferQuality,
+                _ => stats.Quality
+            };
+            var variant = GetRecipeVariant(recipe, recipeVariantIndex);
+            return CalculateProductionQuality(recipe, inputQuality, stats.Quality,
+                variant != null ? variant.qualityScore : stats.Quality);
+        }
+
+        private static int CalculateProductionQuality(SemiconRecipeKind recipe, int inputQuality,
+            int machineQuality, int recipeQuality)
+        {
+            if (recipe == SemiconRecipeKind.WaferSubstrate) return Mathf.Clamp(machineQuality, 1, 100);
+            var packaged = recipe == SemiconRecipeKind.Sc01ControlSensor ||
+                           recipe == SemiconRecipeKind.Pm10PowerManagement ||
+                           recipe == SemiconRecipeKind.Dd20DisplayDriver;
+            return packaged
+                ? Mathf.Clamp(Mathf.RoundToInt(inputQuality * 0.40f + machineQuality * 0.25f +
+                                               recipeQuality * 0.35f), 1, 100)
+                : Mathf.Clamp(Mathf.RoundToInt(inputQuality * 0.40f + machineQuality * 0.30f +
+                                               recipeQuality * 0.30f), 1, 100);
+        }
+
         public bool TryStartProduction(int slotIndex, SemiconRecipeKind recipe, int batches,
+            out SemiconProductionJobSnapshot job, out string reason)
+        {
+            return TryStartProduction(slotIndex, recipe, batches, GetRecommendedRecipeVariantIndex(recipe),
+                out job, out reason);
+        }
+
+        public bool TryStartProduction(int slotIndex, SemiconRecipeKind recipe, int batches, int recipeVariantIndex,
             out SemiconProductionJobSnapshot job, out string reason)
         {
             job = default;
@@ -851,6 +1139,13 @@ namespace SemiconCity.Game
             if (recipe == SemiconRecipeKind.TestedWafer && !edsRecipeQualified)
             {
                 reason = "EDS 공정 실험에서 EDS-01 레시피를 먼저 확정하세요.";
+                return false;
+            }
+
+            var selectedVariant = GetRecipeVariant(recipe, recipeVariantIndex);
+            if (NormalizeVariantRecipe(recipe) != SemiconRecipeKind.None && selectedVariant == null)
+            {
+                reason = "실험실에서 통과한 공정 조건을 레시피로 먼저 등록하세요.";
                 return false;
             }
 
@@ -966,38 +1261,21 @@ namespace SemiconCity.Game
             slot.activeJobRecipe = recipe;
             slot.activeJobBatches = batches;
             slot.activeJobOutput = stats.OutputPerCycle * batches;
-            slot.activeJobQuality = recipe == SemiconRecipeKind.OxidizedWafer
-                ? Mathf.Clamp(Mathf.RoundToInt(inputWaferQuality * 0.35f + stats.Quality * 0.30f +
-                                               bestOxideUniformity * 0.35f), 1, 100)
-                : recipe == SemiconRecipeKind.PhotoPatternedWafer
-                    ? Mathf.Clamp(Mathf.RoundToInt(inputOxidizedWaferQuality * 0.40f + stats.Quality * 0.30f +
-                                                   (bestYield + bestPrecision) * 0.15f), 1, 100)
-                    : recipe == SemiconRecipeKind.EtchedWafer
-                        ? Mathf.Clamp(Mathf.RoundToInt(inputPatternedWaferQuality * 0.40f +
-                                                       stats.Quality * 0.30f + bestEtchProfile * 0.30f), 1, 100)
-                        : recipe == SemiconRecipeKind.DepositedWafer
-                            ? Mathf.Clamp(Mathf.RoundToInt(inputEtchedWaferQuality * 0.40f +
-                                                           stats.Quality * 0.30f +
-                                                           bestDepositionUniformity * 0.18f +
-                                                           bestDepositionCoverage * 0.12f), 1, 100)
-                            : recipe == SemiconRecipeKind.MetalizedWafer
-                                ? Mathf.Clamp(Mathf.RoundToInt(inputDepositedWaferQuality * 0.40f +
-                                                               stats.Quality * 0.30f +
-                                                               bestMetalAdhesion * 0.20f +
-                                                               Mathf.Clamp(100f - Mathf.Abs(bestMetalResistance - 0.1f) *
-                                                                   250f, 60f, 100f) * 0.10f), 1, 100)
-                                : recipe == SemiconRecipeKind.TestedWafer
-                                    ? Mathf.Clamp(Mathf.RoundToInt(inputMetalizedWaferQuality * 0.40f +
-                                                                   stats.Quality * 0.30f +
-                                                                   bestEdsDetection * 0.20f +
-                                                                   bestEdsYield * 0.10f), 1, 100)
-                                    : isPackagedProduct
-                                        ? Mathf.Clamp(Mathf.RoundToInt(inputTestedWaferQuality * 0.40f +
-                                                                       stats.Quality * 0.25f +
-                                                                       bestPackageBondStrength * 0.15f +
-                                                                       bestPackageIntegrity * 0.10f +
-                                                                       bestPackageFinalPass * 0.10f), 1, 100)
-                                        : stats.Quality;
+            var inputQuality = recipe switch
+            {
+                SemiconRecipeKind.OxidizedWafer => inputWaferQuality,
+                SemiconRecipeKind.PhotoPatternedWafer => inputOxidizedWaferQuality,
+                SemiconRecipeKind.EtchedWafer => inputPatternedWaferQuality,
+                SemiconRecipeKind.DepositedWafer => inputEtchedWaferQuality,
+                SemiconRecipeKind.MetalizedWafer => inputDepositedWaferQuality,
+                SemiconRecipeKind.TestedWafer => inputMetalizedWaferQuality,
+                SemiconRecipeKind.Sc01ControlSensor => inputTestedWaferQuality,
+                SemiconRecipeKind.Pm10PowerManagement => inputTestedWaferQuality,
+                SemiconRecipeKind.Dd20DisplayDriver => inputTestedWaferQuality,
+                _ => stats.Quality
+            };
+            slot.activeJobQuality = CalculateProductionQuality(recipe, inputQuality, stats.Quality,
+                selectedVariant != null ? selectedVariant.qualityScore : stats.Quality);
             slot.activeJobStartUtcTicks = nowTicks;
             slot.activeJobFinishUtcTicks = nowTicks + TimeSpan.FromSeconds(durationSeconds).Ticks;
             SaveAndNotify();
@@ -1079,6 +1357,7 @@ namespace SemiconCity.Game
                 testedWaferQualityPoints += quality * outputAmount;
             }
 
+            var previousUnlocked = UnlockedProcessCount;
             unlockedProcessCount = Math.Max(unlockedProcessCount, recipe switch
             {
                 SemiconRecipeKind.WaferSubstrate => 2,
@@ -1090,6 +1369,7 @@ namespace SemiconCity.Game
                 SemiconRecipeKind.TestedWafer => 8,
                 _ => unlockedProcessCount
             });
+            GrantProcessRobotRewards(previousUnlocked + 1, UnlockedProcessCount);
 
             slot.ClearJob();
             EnsureProgressArrays();
@@ -1131,30 +1411,180 @@ namespace SemiconCity.Game
         {
             var slot = GetFactorySlot(slotIndex);
             return slot == null
-                ? SemiconFactoryDefinitions.GetStats(SemiconWorkerKind.None, SemiconDiskKind.None)
-                : SemiconFactoryDefinitions.GetStats(slot.worker, slot.disk);
+                ? SemiconFactoryDefinitions.GetStats(SemiconRobotKind.None, SemiconDiskKind.None,
+                    SemiconDiskGrade.None)
+                : SemiconFactoryDefinitions.GetStats(slot);
+        }
+
+        public int GetRobotOwnedCount(SemiconRobotKind robot)
+        {
+            EnsureGachaInventory();
+            if (robot == SemiconRobotKind.None) return 0;
+            var total = 0;
+            for (var enhancement = 0; enhancement <= SemiconFactoryDefinitions.MaxRobotEnhancement; enhancement++)
+                total += GetRobotOwnedCount(robot, enhancement);
+            return total;
+        }
+
+        public int GetRobotOwnedCount(SemiconRobotKind robot, int enhancement)
+        {
+            EnsureGachaInventory();
+            var index = GetRobotInventoryIndex(robot, enhancement);
+            return index >= 0 && index < robotEnhancementInventory.Length
+                ? robotEnhancementInventory[index]
+                : 0;
+        }
+
+        public int GetRobotBaseEquivalentCount(SemiconRobotKind robot)
+        {
+            var total = 0;
+            var value = 1;
+            for (var enhancement = 0; enhancement <= SemiconFactoryDefinitions.MaxRobotEnhancement; enhancement++)
+            {
+                total += GetRobotOwnedCount(robot, enhancement) * value;
+                value *= SemiconFactoryDefinitions.EnhancementMergeCount;
+            }
+            return total;
+        }
+
+        public int GetDiskOwnedCount(SemiconDiskKind disk, SemiconDiskGrade grade)
+        {
+            EnsureGachaInventory();
+            var index = GetDiskInventoryIndex(disk, grade);
+            return index >= 0 && index < diskInventory.Length ? diskInventory[index] : 0;
+        }
+
+        public int GetRobotAssignedCount(SemiconRobotKind robot, int exceptSlot = -1)
+        {
+            if (robot == SemiconRobotKind.None) return 0;
+            EnsureFactorySlots();
+            var count = 0;
+            for (var slotIndex = 0; slotIndex < factorySlots.Length; slotIndex++)
+            {
+                if (slotIndex == exceptSlot) continue;
+                var slot = factorySlots[slotIndex];
+                slot.EnsureCrewSlots();
+                for (var crewIndex = 0; crewIndex < SemiconFactoryDefinitions.RobotsPerSlot; crewIndex++)
+                    if (slot.robots[crewIndex] == robot) count++;
+            }
+            return count;
+        }
+
+        public int GetRobotAssignedCountAtLevel(SemiconRobotKind robot, int enhancement,
+            int exceptSlot = -1, int exceptCrew = -1)
+        {
+            if (robot == SemiconRobotKind.None) return 0;
+            EnsureFactorySlots();
+            var count = 0;
+            for (var slotIndex = 0; slotIndex < factorySlots.Length; slotIndex++)
+            {
+                var slot = factorySlots[slotIndex];
+                slot.EnsureCrewSlots();
+                for (var crewIndex = 0; crewIndex < SemiconFactoryDefinitions.RobotsPerSlot; crewIndex++)
+                {
+                    if (slotIndex == exceptSlot && crewIndex == exceptCrew) continue;
+                    if (slot.robots[crewIndex] == robot && slot.robotEnhancements[crewIndex] == enhancement) count++;
+                }
+            }
+            return count;
+        }
+
+        public int GetDiskAssignedCount(SemiconDiskKind disk, SemiconDiskGrade grade, int exceptSlot = -1)
+        {
+            if (disk == SemiconDiskKind.None || grade == SemiconDiskGrade.None) return 0;
+            EnsureFactorySlots();
+            var count = 0;
+            for (var slotIndex = 0; slotIndex < factorySlots.Length; slotIndex++)
+            {
+                if (slotIndex == exceptSlot) continue;
+                var slot = factorySlots[slotIndex];
+                slot.EnsureCrewSlots();
+                for (var crewIndex = 0; crewIndex < SemiconFactoryDefinitions.RobotsPerSlot; crewIndex++)
+                    if (slot.disks[crewIndex] == disk && slot.diskGrades[crewIndex] == grade) count++;
+            }
+            return count;
+        }
+
+        public int GetDiskAssignedCountAtCrew(SemiconDiskKind disk, SemiconDiskGrade grade,
+            int exceptSlot, int exceptCrew)
+        {
+            if (disk == SemiconDiskKind.None || grade == SemiconDiskGrade.None) return 0;
+            EnsureFactorySlots();
+            var count = 0;
+            for (var slotIndex = 0; slotIndex < factorySlots.Length; slotIndex++)
+            {
+                var slot = factorySlots[slotIndex];
+                slot.EnsureCrewSlots();
+                for (var crewIndex = 0; crewIndex < SemiconFactoryDefinitions.RobotsPerSlot; crewIndex++)
+                {
+                    if (slotIndex == exceptSlot && crewIndex == exceptCrew) continue;
+                    if (slot.disks[crewIndex] == disk && slot.diskGrades[crewIndex] == grade) count++;
+                }
+            }
+            return count;
+        }
+
+        public bool IsRobotAvailable(SemiconRobotKind robot, int targetSlot)
+        {
+            if (robot == SemiconRobotKind.None) return true;
+            for (var enhancement = SemiconFactoryDefinitions.MaxRobotEnhancement; enhancement >= 0; enhancement--)
+                if (IsRobotAvailable(robot, enhancement, targetSlot, 0)) return true;
+            return false;
+        }
+
+        public bool IsRobotAvailable(SemiconRobotKind robot, int enhancement, int targetSlot, int targetCrew)
+        {
+            if (robot == SemiconRobotKind.None) return true;
+            return GetRobotOwnedCount(robot, enhancement) >
+                   GetRobotAssignedCountAtLevel(robot, enhancement, targetSlot, targetCrew);
+        }
+
+        public int GetHighestAvailableRobotEnhancement(SemiconRobotKind robot, int targetSlot = -1,
+            int targetCrew = -1)
+        {
+            if (robot == SemiconRobotKind.None) return 0;
+            for (var enhancement = SemiconFactoryDefinitions.MaxRobotEnhancement; enhancement >= 0; enhancement--)
+                if (IsRobotAvailable(robot, enhancement, targetSlot, targetCrew)) return enhancement;
+            return -1;
+        }
+
+        public int GetHighestRobotEnhancement(SemiconRobotKind robot)
+        {
+            if (robot == SemiconRobotKind.None) return 0;
+            for (var enhancement = SemiconFactoryDefinitions.MaxRobotEnhancement; enhancement >= 0; enhancement--)
+                if (GetRobotOwnedCount(robot, enhancement) > 0) return enhancement;
+            return 0;
         }
 
         public bool IsWorkerAvailable(SemiconWorkerKind worker, int targetSlot)
         {
-            if (worker == SemiconWorkerKind.None) return true;
-            EnsureFactorySlots();
-            for (var index = 0; index < factorySlots.Length; index++)
+            var robot = worker switch
             {
-                if (index != targetSlot && factorySlots[index].worker == worker) return false;
-            }
-            return true;
+                SemiconWorkerKind.Mina => SemiconRobotKind.Nano14,
+                SemiconWorkerKind.Rex => SemiconRobotKind.Helix12,
+                SemiconWorkerKind.Bo7 => SemiconRobotKind.Aurora13,
+                _ => SemiconRobotKind.None
+            };
+            return IsRobotAvailable(robot, targetSlot);
+        }
+
+        public bool IsDiskAvailable(SemiconDiskKind disk, SemiconDiskGrade grade, int targetSlot)
+        {
+            if (disk == SemiconDiskKind.None || grade == SemiconDiskGrade.None) return true;
+            return GetDiskOwnedCount(disk, grade) > GetDiskAssignedCount(disk, grade, targetSlot);
+        }
+
+        public bool IsDiskAvailable(SemiconDiskKind disk, SemiconDiskGrade grade, int targetSlot, int targetCrew)
+        {
+            if (disk == SemiconDiskKind.None || grade == SemiconDiskGrade.None) return true;
+            return GetDiskOwnedCount(disk, grade) >
+                   GetDiskAssignedCountAtCrew(disk, grade, targetSlot, targetCrew);
         }
 
         public bool IsDiskAvailable(SemiconDiskKind disk, int targetSlot)
         {
-            if (disk == SemiconDiskKind.None) return true;
-            EnsureFactorySlots();
-            for (var index = 0; index < factorySlots.Length; index++)
-            {
-                if (index != targetSlot && factorySlots[index].disk == disk) return false;
-            }
-            return true;
+            return IsDiskAvailable(disk, disk == SemiconDiskKind.None ? SemiconDiskGrade.None : SemiconDiskGrade.II,
+                targetSlot);
         }
 
         public bool TryInstallFactoryMachine(int slotIndex, out string reason)
@@ -1185,6 +1615,27 @@ namespace SemiconCity.Game
 
         public bool TryAssignWorker(int slotIndex, SemiconWorkerKind worker, out string reason)
         {
+            var robot = worker switch
+            {
+                SemiconWorkerKind.Mina => SemiconRobotKind.Nano14,
+                SemiconWorkerKind.Rex => SemiconRobotKind.Helix12,
+                SemiconWorkerKind.Bo7 => SemiconRobotKind.Aurora13,
+                _ => SemiconRobotKind.None
+            };
+            return TryAssignRobot(slotIndex, robot, out reason);
+        }
+
+        public bool TryAssignRobot(int slotIndex, SemiconRobotKind robot, out string reason)
+        {
+            var enhancement = robot == SemiconRobotKind.None
+                ? 0
+                : GetHighestAvailableRobotEnhancement(robot, slotIndex, 0);
+            return TryAssignRobot(slotIndex, 0, robot, enhancement, out reason);
+        }
+
+        public bool TryAssignRobot(int slotIndex, int crewIndex, SemiconRobotKind robot, int enhancement,
+            out string reason)
+        {
             var slot = GetFactorySlot(slotIndex);
             if (slot == null || !slot.machineInstalled)
             {
@@ -1193,22 +1644,51 @@ namespace SemiconCity.Game
             }
             if (GetProductionJob(slotIndex).HasJob)
             {
-                reason = "생산 중에는 작업 인력을 변경할 수 없습니다.";
+                reason = "생산 중에는 작업 로봇을 변경할 수 없습니다.";
                 return false;
             }
-            if (!IsWorkerAvailable(worker, slotIndex))
+            if (crewIndex < 0 || crewIndex >= SemiconFactoryDefinitions.RobotsPerSlot)
             {
-                reason = "해당 인력은 다른 설비에 배정되어 있습니다.";
+                reason = "존재하지 않는 로봇 배치 자리입니다.";
+                return false;
+            }
+            enhancement = Mathf.Clamp(enhancement, 0, SemiconFactoryDefinitions.MaxRobotEnhancement);
+            if (!IsRobotAvailable(robot, enhancement, slotIndex, crewIndex))
+            {
+                reason = "해당 강화 단계의 로봇이 모두 다른 설비에 배치되어 있습니다.";
                 return false;
             }
 
-            slot.worker = worker;
+            slot.EnsureCrewSlots();
+            var previousRobot = slot.robots[crewIndex];
+            slot.worker = SemiconWorkerKind.None;
+            slot.robots[crewIndex] = robot;
+            slot.robotEnhancements[crewIndex] = robot == SemiconRobotKind.None ? 0 : enhancement;
+            if (robot == SemiconRobotKind.None)
+            {
+                slot.disks[crewIndex] = SemiconDiskKind.None;
+                slot.diskGrades[crewIndex] = SemiconDiskGrade.None;
+            }
+            slot.SyncLegacyCrewSlot();
+            if (previousRobot != SemiconRobotKind.None) NormalizeRobotEnhancements(previousRobot);
             SaveAndNotify();
             reason = string.Empty;
             return true;
         }
 
         public bool TryAssignDisk(int slotIndex, SemiconDiskKind disk, out string reason)
+        {
+            return TryAssignDisk(slotIndex, disk,
+                disk == SemiconDiskKind.None ? SemiconDiskGrade.None : SemiconDiskGrade.II, out reason);
+        }
+
+        public bool TryAssignDisk(int slotIndex, SemiconDiskKind disk, SemiconDiskGrade grade, out string reason)
+        {
+            return TryAssignDisk(slotIndex, 0, disk, grade, out reason);
+        }
+
+        public bool TryAssignDisk(int slotIndex, int crewIndex, SemiconDiskKind disk, SemiconDiskGrade grade,
+            out string reason)
         {
             var slot = GetFactorySlot(slotIndex);
             if (slot == null || !slot.machineInstalled)
@@ -1221,27 +1701,161 @@ namespace SemiconCity.Game
                 reason = "생산 중에는 디스크를 교체할 수 없습니다.";
                 return false;
             }
-            if (!IsDiskAvailable(disk, slotIndex))
+            if (crewIndex < 0 || crewIndex >= SemiconFactoryDefinitions.RobotsPerSlot)
             {
-                reason = "해당 디스크는 다른 설비에 장착되어 있습니다.";
+                reason = "존재하지 않는 로봇 배치 자리입니다.";
+                return false;
+            }
+            slot.EnsureCrewSlots();
+            if (disk != SemiconDiskKind.None && slot.robots[crewIndex] == SemiconRobotKind.None)
+            {
+                reason = "먼저 이 자리에 로봇을 배치하세요.";
+                return false;
+            }
+            if (!IsDiskAvailable(disk, grade, slotIndex, crewIndex))
+            {
+                reason = "보유 중인 해당 디스크가 모두 다른 로봇에 장착되어 있습니다.";
                 return false;
             }
 
-            slot.disk = disk;
+            slot.disks[crewIndex] = disk;
+            slot.diskGrades[crewIndex] = disk == SemiconDiskKind.None ? SemiconDiskGrade.None : grade;
+            slot.SyncLegacyCrewSlot();
             SaveAndNotify();
             reason = string.Empty;
             return true;
         }
 
+        public bool TryDrawRobots(int drawCount, out SemiconGachaReward[] rewards, out string reason)
+        {
+            rewards = Array.Empty<SemiconGachaReward>();
+            if (drawCount != 1 && drawCount != 10)
+            {
+                reason = "로봇 모집은 1회 또는 10회만 가능합니다.";
+                return false;
+            }
+
+            var price = drawCount == 10
+                ? SemiconFactoryDefinitions.RobotTenDrawPrice
+                : SemiconFactoryDefinitions.RobotSingleDrawPrice;
+            if (credits < price)
+            {
+                reason = $"로봇 모집에 ₩ {price:N0}이 필요합니다.";
+                return false;
+            }
+
+            EnsureGachaInventory();
+            credits -= price;
+            rewards = new SemiconGachaReward[drawCount];
+            for (var index = 0; index < drawCount; index++)
+            {
+                var robot = RollRobot(drawCount == 10 && index == drawCount - 1);
+                var enhancement = AddRobotAndMerge(robot, 0, out var upgraded);
+                rewards[index] = new SemiconGachaReward(robot, enhancement, upgraded);
+            }
+            robotDrawCount += drawCount;
+            SaveAndNotify();
+            reason = string.Empty;
+            return true;
+        }
+
+        public bool TryDrawDisks(int drawCount, out SemiconGachaReward[] rewards, out string reason)
+        {
+            rewards = Array.Empty<SemiconGachaReward>();
+            if (drawCount != 1 && drawCount != 10)
+            {
+                reason = "디스크 추첨은 1회 또는 10회만 가능합니다.";
+                return false;
+            }
+
+            var price = drawCount == 10
+                ? SemiconFactoryDefinitions.DiskTenDrawPrice
+                : SemiconFactoryDefinitions.DiskSingleDrawPrice;
+            if (credits < price)
+            {
+                reason = $"디스크 추첨에 ₩ {price:N0}이 필요합니다.";
+                return false;
+            }
+
+            EnsureGachaInventory();
+            credits -= price;
+            rewards = new SemiconGachaReward[drawCount];
+            for (var index = 0; index < drawCount; index++)
+            {
+                var grade = RollDiskGrade(drawCount == 10 && index == drawCount - 1);
+                var disk = (SemiconDiskKind)UnityEngine.Random.Range(1, 4);
+                diskInventory[GetDiskInventoryIndex(disk, grade)]++;
+                rewards[index] = new SemiconGachaReward(disk, grade);
+            }
+            diskDrawCount += drawCount;
+            SaveAndNotify();
+            reason = string.Empty;
+            return true;
+        }
+
+        internal bool GrantGachaRewardForSmokeTest(SemiconRobotKind robot, SemiconDiskKind disk,
+            SemiconDiskGrade grade)
+        {
+            if (!suppressPersistence) return false;
+            EnsureGachaInventory();
+            if (robot != SemiconRobotKind.None) AddRobotAndMerge(robot, 0, out _);
+            var diskIndex = GetDiskInventoryIndex(disk, grade);
+            if (diskIndex >= 0) diskInventory[diskIndex]++;
+            StateChanged?.Invoke();
+            return true;
+        }
+
+        internal bool GrantRobotCopiesForSmokeTest(SemiconRobotKind robot, int count)
+        {
+            if (!suppressPersistence || robot == SemiconRobotKind.None || count < 1) return false;
+            EnsureGachaInventory();
+            for (var index = 0; index < count; index++) AddRobotAndMerge(robot, 0, out _);
+            StateChanged?.Invoke();
+            return true;
+        }
+
         public int GetFinishedProductSalePrice()
         {
-            return FinishedProductSalePrice + Math.Max(0, AverageFinishedProductQuality - 80) * 40;
+            return GetSaleProductPrice(SemiconRecipeKind.Sc01ControlSensor);
+        }
+
+        public int GetSaleProductStock(SemiconRecipeKind recipe)
+        {
+            return recipe switch
+            {
+                SemiconRecipeKind.Pm10PowerManagement => pm10Stock,
+                SemiconRecipeKind.Dd20DisplayDriver => dd20Stock,
+                SemiconRecipeKind.Sc01ControlSensor => finishedProductStock,
+                _ => 0
+            };
+        }
+
+        public int GetSaleProductQuality(SemiconRecipeKind recipe)
+        {
+            return recipe switch
+            {
+                SemiconRecipeKind.Pm10PowerManagement => AveragePm10Quality,
+                SemiconRecipeKind.Dd20DisplayDriver => AverageDd20Quality,
+                SemiconRecipeKind.Sc01ControlSensor => AverageFinishedProductQuality,
+                _ => 0
+            };
+        }
+
+        public int GetSaleProductPrice(SemiconRecipeKind recipe)
+        {
+            var quality = GetSaleProductQuality(recipe);
+            return recipe switch
+            {
+                SemiconRecipeKind.Pm10PowerManagement => Pm10SalePrice + Math.Max(0, quality - 80) * 60,
+                SemiconRecipeKind.Dd20DisplayDriver => Dd20SalePrice + Math.Max(0, quality - 80) * 80,
+                SemiconRecipeKind.Sc01ControlSensor => FinishedProductSalePrice + Math.Max(0, quality - 80) * 40,
+                _ => 0
+            };
         }
 
         [ContextMenu("Reset Prototype Save")]
         public void ResetProgress()
         {
-            researchPoints = 120;
             credits = 25000;
             bestYield = 0f;
             bestPrecision = 0f;
@@ -1321,7 +1935,16 @@ namespace SemiconCity.Game
             metalizedWaferQualityPoints = 0;
             testedWaferStock = 0;
             testedWaferQualityPoints = 0;
+            recipeVariants = Array.Empty<SemiconRecipeVariantData>();
             factorySlots = CreateDefaultFactorySlots();
+            gachaInventoryInitialized = false;
+            robotInventory = null;
+            robotEnhancementInventory = null;
+            robotProcessRewardMask = 0;
+            diskInventory = null;
+            robotDrawCount = 0;
+            diskDrawCount = 0;
+            EnsureGachaInventory();
             SaveAndNotify();
         }
 
@@ -1333,7 +1956,6 @@ namespace SemiconCity.Game
                 var data = JsonUtility.FromJson<SaveData>(File.ReadAllText(SavePath));
                 if (data == null) return;
 
-                researchPoints = data.researchPoints;
                 credits = data.credits;
                 bestYield = data.bestYield;
                 bestPrecision = data.bestPrecision;
@@ -1415,7 +2037,15 @@ namespace SemiconCity.Game
                 metalizedWaferQualityPoints = data.metalizedWaferQualityPoints;
                 testedWaferStock = data.testedWaferStock;
                 testedWaferQualityPoints = data.testedWaferQualityPoints;
+                recipeVariants = data.recipeVariants ?? Array.Empty<SemiconRecipeVariantData>();
                 factorySlots = data.factorySlots;
+                gachaInventoryInitialized = data.gachaInventoryInitialized;
+                robotInventory = data.robotInventory;
+                robotEnhancementInventory = data.robotEnhancementInventory;
+                robotProcessRewardMask = data.robotProcessRewardMask;
+                diskInventory = data.diskInventory;
+                robotDrawCount = data.robotDrawCount;
+                diskDrawCount = data.diskDrawCount;
             }
             catch (Exception exception)
             {
@@ -1439,7 +2069,6 @@ namespace SemiconCity.Game
             {
                 var data = new SaveData
                 {
-                    researchPoints = researchPoints,
                     credits = credits,
                     bestYield = bestYield,
                     bestPrecision = bestPrecision,
@@ -1519,7 +2148,15 @@ namespace SemiconCity.Game
                     metalizedWaferQualityPoints = metalizedWaferQualityPoints,
                     testedWaferStock = testedWaferStock,
                     testedWaferQualityPoints = testedWaferQualityPoints,
-                    factorySlots = factorySlots
+                    recipeVariants = recipeVariants,
+                    factorySlots = factorySlots,
+                    gachaInventoryInitialized = gachaInventoryInitialized,
+                    robotInventory = robotInventory,
+                    robotEnhancementInventory = robotEnhancementInventory,
+                    robotProcessRewardMask = robotProcessRewardMask,
+                    diskInventory = diskInventory,
+                    robotDrawCount = robotDrawCount,
+                    diskDrawCount = diskDrawCount
                 };
                 File.WriteAllText(SavePath, JsonUtility.ToJson(data, true));
             }
@@ -1539,6 +2176,7 @@ namespace SemiconCity.Game
                     {
                         factorySlots[index] = new SemiconFactorySlotData(index == 0);
                     }
+                    MigrateLegacySlot(factorySlots[index]);
                 }
                 return;
             }
@@ -1548,8 +2186,252 @@ namespace SemiconCity.Game
             if (previous == null) return;
             for (var index = 0; index < Math.Min(previous.Length, factorySlots.Length); index++)
             {
-                if (previous[index] != null) factorySlots[index] = previous[index];
+                if (previous[index] != null)
+                {
+                    factorySlots[index] = previous[index];
+                    MigrateLegacySlot(factorySlots[index]);
+                }
             }
+        }
+
+        private void EnsureGachaInventory()
+        {
+            var robotArraySize = Enum.GetValues(typeof(SemiconRobotKind)).Length;
+            if (robotInventory == null || robotInventory.Length != robotArraySize)
+            {
+                var previous = robotInventory;
+                robotInventory = new int[robotArraySize];
+                if (previous != null) Array.Copy(previous, robotInventory, Math.Min(previous.Length, robotInventory.Length));
+            }
+
+            var enhancementArraySize = robotArraySize * (SemiconFactoryDefinitions.MaxRobotEnhancement + 1);
+            var enhancementInventoryWasEmpty = robotEnhancementInventory == null ||
+                                               Array.TrueForAll(robotEnhancementInventory, value => value == 0);
+            if (robotEnhancementInventory == null || robotEnhancementInventory.Length != enhancementArraySize)
+            {
+                var previous = robotEnhancementInventory;
+                robotEnhancementInventory = new int[enhancementArraySize];
+                if (previous != null)
+                    Array.Copy(previous, robotEnhancementInventory,
+                        Math.Min(previous.Length, robotEnhancementInventory.Length));
+            }
+            if (enhancementInventoryWasEmpty && robotInventory != null)
+            {
+                for (var robotIndex = 1; robotIndex < robotInventory.Length; robotIndex++)
+                    robotEnhancementInventory[GetRobotInventoryIndex((SemiconRobotKind)robotIndex, 0)] =
+                        Math.Max(0, robotInventory[robotIndex]);
+            }
+
+            const int diskArraySize = 9;
+            if (diskInventory == null || diskInventory.Length != diskArraySize)
+            {
+                var previous = diskInventory;
+                diskInventory = new int[diskArraySize];
+                if (previous != null) Array.Copy(previous, diskInventory, Math.Min(previous.Length, diskInventory.Length));
+            }
+
+            EnsureFactorySlots();
+            foreach (var slot in factorySlots)
+            {
+                if (slot == null) continue;
+                MigrateLegacySlot(slot);
+            }
+
+            for (var robotIndex = 1; robotIndex < robotArraySize; robotIndex++)
+            for (var enhancement = 0; enhancement <= SemiconFactoryDefinitions.MaxRobotEnhancement; enhancement++)
+            {
+                var robot = (SemiconRobotKind)robotIndex;
+                var assigned = GetRobotAssignedCountAtLevel(robot, enhancement);
+                var inventoryIndex = GetRobotInventoryIndex(robot, enhancement);
+                robotEnhancementInventory[inventoryIndex] =
+                    Math.Max(robotEnhancementInventory[inventoryIndex], assigned);
+            }
+            for (var diskKind = 1; diskKind <= 3; diskKind++)
+            for (var grade = 1; grade <= 3; grade++)
+            {
+                var disk = (SemiconDiskKind)diskKind;
+                var diskGrade = (SemiconDiskGrade)grade;
+                var diskIndex = GetDiskInventoryIndex(disk, diskGrade);
+                diskInventory[diskIndex] = Math.Max(diskInventory[diskIndex],
+                    GetDiskAssignedCount(disk, diskGrade));
+            }
+
+            if (!gachaInventoryInitialized)
+            {
+                robotEnhancementInventory[GetRobotInventoryIndex(SemiconRobotKind.Bolt01, 0)]++;
+                diskInventory[GetDiskInventoryIndex(SemiconDiskKind.Production, SemiconDiskGrade.I)]++;
+                gachaInventoryInitialized = true;
+                robotProcessRewardMask |= 1;
+            }
+            else if (robotProcessRewardMask == 0)
+            {
+                // Older saves already received the initial BOLT-01 through gachaInventoryInitialized.
+                robotProcessRewardMask |= 1;
+            }
+
+            GrantProcessRobotRewards(2, UnlockedProcessCount);
+            for (var robotIndex = 1; robotIndex < robotArraySize; robotIndex++)
+            {
+                var robot = (SemiconRobotKind)robotIndex;
+                NormalizeRobotEnhancements(robot);
+                var total = 0;
+                for (var enhancement = 0; enhancement <= SemiconFactoryDefinitions.MaxRobotEnhancement; enhancement++)
+                    total += robotEnhancementInventory[GetRobotInventoryIndex(robot, enhancement)];
+                robotInventory[robotIndex] = total;
+            }
+        }
+
+        private static void MigrateLegacySlot(SemiconFactorySlotData slot)
+        {
+            if (slot.robot == SemiconRobotKind.None)
+            {
+                slot.robot = slot.worker switch
+                {
+                    SemiconWorkerKind.Mina => SemiconRobotKind.Nano14,
+                    SemiconWorkerKind.Rex => SemiconRobotKind.Helix12,
+                    SemiconWorkerKind.Bo7 => SemiconRobotKind.Aurora13,
+                    _ => SemiconRobotKind.None
+                };
+            }
+            slot.worker = SemiconWorkerKind.None;
+            if (slot.disk == SemiconDiskKind.None)
+            {
+                slot.diskGrade = SemiconDiskGrade.None;
+            }
+            else if (slot.diskGrade == SemiconDiskGrade.None)
+            {
+                slot.diskGrade = SemiconDiskGrade.II;
+            }
+            slot.EnsureCrewSlots();
+        }
+
+        private static int GetRobotInventoryIndex(SemiconRobotKind robot, int enhancement)
+        {
+            if (robot == SemiconRobotKind.None || enhancement < 0 ||
+                enhancement > SemiconFactoryDefinitions.MaxRobotEnhancement) return -1;
+            return (int)robot * (SemiconFactoryDefinitions.MaxRobotEnhancement + 1) + enhancement;
+        }
+
+        private int AddRobotAndMerge(SemiconRobotKind robot, int enhancement, out bool upgraded)
+        {
+            upgraded = false;
+            if (robot == SemiconRobotKind.None) return 0;
+            if (robotEnhancementInventory == null) EnsureGachaInventory();
+            enhancement = Mathf.Clamp(enhancement, 0, SemiconFactoryDefinitions.MaxRobotEnhancement);
+            robotEnhancementInventory[GetRobotInventoryIndex(robot, enhancement)]++;
+            var highestResult = enhancement;
+            for (var level = enhancement; level < SemiconFactoryDefinitions.MaxRobotEnhancement; level++)
+            {
+                var index = GetRobotInventoryIndex(robot, level);
+                var assigned = GetRobotAssignedCountAtLevel(robot, level);
+                while (robotEnhancementInventory[index] - assigned >= SemiconFactoryDefinitions.EnhancementMergeCount)
+                {
+                    robotEnhancementInventory[index] -= SemiconFactoryDefinitions.EnhancementMergeCount;
+                    robotEnhancementInventory[GetRobotInventoryIndex(robot, level + 1)]++;
+                    highestResult = level + 1;
+                    upgraded = true;
+                }
+            }
+            SyncLegacyRobotCount(robot);
+            return highestResult;
+        }
+
+        private void NormalizeRobotEnhancements(SemiconRobotKind robot)
+        {
+            if (robot == SemiconRobotKind.None || robotEnhancementInventory == null) return;
+            for (var level = 0; level < SemiconFactoryDefinitions.MaxRobotEnhancement; level++)
+            {
+                var index = GetRobotInventoryIndex(robot, level);
+                var assigned = GetRobotAssignedCountAtLevel(robot, level);
+                while (robotEnhancementInventory[index] - assigned >= SemiconFactoryDefinitions.EnhancementMergeCount)
+                {
+                    robotEnhancementInventory[index] -= SemiconFactoryDefinitions.EnhancementMergeCount;
+                    robotEnhancementInventory[GetRobotInventoryIndex(robot, level + 1)]++;
+                }
+            }
+            SyncLegacyRobotCount(robot);
+        }
+
+        private void SyncLegacyRobotCount(SemiconRobotKind robot)
+        {
+            if (robot == SemiconRobotKind.None || robotInventory == null) return;
+            var total = 0;
+            for (var level = 0; level <= SemiconFactoryDefinitions.MaxRobotEnhancement; level++)
+                total += robotEnhancementInventory[GetRobotInventoryIndex(robot, level)];
+            robotInventory[(int)robot] = total;
+        }
+
+        private void GrantProcessRobotRewards(int firstProcess, int lastProcess)
+        {
+            for (var process = Mathf.Max(1, firstProcess); process <= Mathf.Min(8, lastProcess); process++)
+            {
+                var bit = 1 << (process - 1);
+                if ((robotProcessRewardMask & bit) != 0) continue;
+                AddRobotAndMerge(GetProcessRobotReward(process), 0, out _);
+                robotProcessRewardMask |= bit;
+            }
+        }
+
+        public static SemiconRobotKind GetProcessRobotReward(int processNumber)
+        {
+            return processNumber switch
+            {
+                1 => SemiconRobotKind.Bolt01,
+                2 => SemiconRobotKind.Swift02,
+                3 => SemiconRobotKind.Gauge03,
+                4 => SemiconRobotKind.Mule04,
+                5 => SemiconRobotKind.Pico05,
+                6 => SemiconRobotKind.Bolt01,
+                7 => SemiconRobotKind.Swift02,
+                8 => SemiconRobotKind.Gauge03,
+                _ => SemiconRobotKind.Bolt01
+            };
+        }
+
+        private static int GetDiskInventoryIndex(SemiconDiskKind disk, SemiconDiskGrade grade)
+        {
+            if (disk == SemiconDiskKind.None || grade == SemiconDiskGrade.None) return -1;
+            return ((int)disk - 1) * 3 + ((int)grade - 1);
+        }
+
+        private static SemiconRobotKind RollRobot(bool guaranteeRare)
+        {
+            SemiconRobotRarity rarity;
+            var roll = UnityEngine.Random.value;
+            if (guaranteeRare)
+            {
+                rarity = roll < 0.75f ? SemiconRobotRarity.R : SemiconRobotRarity.SR;
+            }
+            else
+            {
+                rarity = roll < 0.60f
+                    ? SemiconRobotRarity.N
+                    : roll < 0.90f
+                        ? SemiconRobotRarity.R
+                        : SemiconRobotRarity.SR;
+            }
+
+            var offset = rarity switch
+            {
+                SemiconRobotRarity.N => 1,
+                SemiconRobotRarity.R => 6,
+                _ => 11
+            };
+            return (SemiconRobotKind)(offset + UnityEngine.Random.Range(0, 5));
+        }
+
+        private static SemiconDiskGrade RollDiskGrade(bool guaranteeGradeTwo)
+        {
+            var roll = UnityEngine.Random.value;
+            if (guaranteeGradeTwo)
+            {
+                return roll < 0.75f ? SemiconDiskGrade.II : SemiconDiskGrade.III;
+            }
+            return roll < 0.60f
+                ? SemiconDiskGrade.I
+                : roll < 0.90f
+                    ? SemiconDiskGrade.II
+                    : SemiconDiskGrade.III;
         }
 
         private void EnsureProgressArrays()
@@ -1576,6 +2458,62 @@ namespace SemiconCity.Game
                 bestProducedQuality = new int[recipeCount];
                 if (previous != null) Array.Copy(previous, bestProducedQuality,
                     Math.Min(previous.Length, bestProducedQuality.Length));
+            }
+        }
+
+        private void EnsureRecipeVariantsFromLegacy()
+        {
+            if (recipeVariants == null) recipeVariants = Array.Empty<SemiconRecipeVariantData>();
+
+            if (oxidationRecipeQualified && GetRecipeVariantCount(SemiconRecipeKind.OxidizedWafer) == 0)
+            {
+                var accuracy = Mathf.Clamp(100f - Mathf.Abs(bestOxideThickness - 100f) * 3f, 60f, 100f);
+                RegisterRecipeVariant(SemiconRecipeKind.OxidizedWafer, bestOxidationTemperature,
+                    bestOxidationTime, bestOxideThickness, bestOxideUniformity, 0f,
+                    Mathf.RoundToInt(bestOxideUniformity * 0.7f + accuracy * 0.3f));
+            }
+            if (photoRecipeQualified && GetRecipeVariantCount(SemiconRecipeKind.PhotoPatternedWafer) == 0)
+            {
+                RegisterRecipeVariant(SemiconRecipeKind.PhotoPatternedWafer, bestDose, bestFocus, bestYield,
+                    bestPrecision, 0f, Mathf.RoundToInt((bestYield + bestPrecision) * 0.5f));
+            }
+            if (etchRecipeQualified && GetRecipeVariantCount(SemiconRecipeKind.EtchedWafer) == 0)
+            {
+                var accuracy = Mathf.Clamp(100f - Mathf.Abs(bestEtchDepth - 120f) * 3f, 60f, 100f);
+                RegisterRecipeVariant(SemiconRecipeKind.EtchedWafer, bestEtchPower, bestEtchGasFlow, bestEtchDepth,
+                    bestEtchProfile, 0f, Mathf.RoundToInt(bestEtchProfile * 0.7f + accuracy * 0.3f));
+            }
+            if (depositionRecipeQualified && GetRecipeVariantCount(SemiconRecipeKind.DepositedWafer) == 0)
+            {
+                var accuracy = Mathf.Clamp(100f - Mathf.Abs(bestDepositionThickness - 80f) * 4f, 60f, 100f);
+                RegisterRecipeVariant(SemiconRecipeKind.DepositedWafer, bestDepositionTemperature,
+                    bestDepositionPressure, bestDepositionThickness, bestDepositionUniformity,
+                    bestDepositionCoverage, Mathf.RoundToInt(bestDepositionUniformity * 0.4f +
+                                                             bestDepositionCoverage * 0.35f + accuracy * 0.25f));
+            }
+            if (metalRecipeQualified && GetRecipeVariantCount(SemiconRecipeKind.MetalizedWafer) == 0)
+            {
+                var thicknessScore = Mathf.Clamp(100f - Mathf.Abs(bestMetalThickness - 450f) * 0.8f, 60f, 100f);
+                var resistanceScore = Mathf.Clamp(100f - Mathf.Abs(bestMetalResistance - 0.1f) * 300f, 60f, 100f);
+                RegisterRecipeVariant(SemiconRecipeKind.MetalizedWafer, bestMetalPower, bestMetalTime,
+                    bestMetalThickness, bestMetalResistance, bestMetalAdhesion,
+                    Mathf.RoundToInt(bestMetalAdhesion * 0.45f + thicknessScore * 0.3f +
+                                     resistanceScore * 0.25f));
+            }
+            if (edsRecipeQualified && GetRecipeVariantCount(SemiconRecipeKind.TestedWafer) == 0)
+            {
+                var rejectScore = Mathf.Clamp(100f - bestEdsFalseReject * 5f, 60f, 100f);
+                RegisterRecipeVariant(SemiconRecipeKind.TestedWafer, bestEdsVoltage, bestEdsLeakageThreshold,
+                    bestEdsYield, bestEdsDetection, bestEdsFalseReject,
+                    Mathf.RoundToInt(bestEdsYield * 0.35f + bestEdsDetection * 0.45f + rejectScore * 0.2f));
+            }
+            if (packageRecipeQualified && GetRecipeVariantCount(SemiconRecipeKind.Sc01ControlSensor) == 0)
+            {
+                RegisterRecipeVariant(SemiconRecipeKind.Sc01ControlSensor, bestPackageBondingForce,
+                    bestPackageMoldingTemperature, bestPackageBondStrength, bestPackageIntegrity,
+                    bestPackageFinalPass, Mathf.RoundToInt(bestPackageBondStrength * 0.3f +
+                                                           bestPackageIntegrity * 0.3f +
+                                                           bestPackageFinalPass * 0.4f));
             }
         }
 

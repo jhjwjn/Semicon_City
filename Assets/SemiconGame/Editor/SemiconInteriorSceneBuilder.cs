@@ -118,12 +118,12 @@ namespace SemiconCity.Editor
             var canvas = SemiconGameProjectBuilder.BuildCanvas(root.transform, out var hud, out var photoPanel,
                 out var oxidationPanel, out var etchPanel, out var depositionPanel, out var metalPanel,
                 out var edsPanel, out var marketPanel, out var packagePanel, out var productionPanel,
-                out var loadoutPanel, out var contractPanel, out var archivePanel);
+                out var loadoutPanel, out var contractPanel, out var archivePanel, out var gachaPanel);
 
             BuildPlaceholderRoom(root.transform, definition);
             BuildMachinePlaceholders(root.transform, definition.Kind, photoPanel, oxidationPanel, etchPanel,
                 depositionPanel, metalPanel, edsPanel, packagePanel, marketPanel, productionPanel,
-                loadoutPanel, contractPanel, archivePanel);
+                loadoutPanel, contractPanel, archivePanel, gachaPanel);
             BuildExitDoor(root.transform, definition, hud);
 
             var player = SemiconGameProjectBuilder.BuildPlayer(root.transform, new Vector3(0f, 0f, 1.5f),
@@ -173,7 +173,7 @@ namespace SemiconCity.Editor
             DepositionExperimentPanel depositionPanel, MetalExperimentPanel metalPanel, EdsExperimentPanel edsPanel,
             PackageExperimentPanel packagePanel, SemiconMarketPanel marketPanel,
             SemiconProductionPanel productionPanel, SemiconFactoryLoadoutPanel loadoutPanel,
-            SemiconContractPanel contractPanel, SemiconArchivePanel archivePanel)
+            SemiconContractPanel contractPanel, SemiconArchivePanel archivePanel, SemiconGachaPanel gachaPanel)
         {
             switch (kind)
             {
@@ -241,9 +241,13 @@ namespace SemiconCity.Editor
                 case SemiconInteriorKind.Workspace:
                 {
                     var archive = CreateInteractionCube(parent, "INTERACTION CUBE - FAB ARCHIVE",
-                        new Vector3(0f, 1.2f, 2.4f), new Vector3(3f, 2.4f, 2.2f), new Color32(42,216,211,255));
+                        new Vector3(-2.3f, 1.2f, 2.4f), new Vector3(3f, 2.4f, 2.2f), new Color32(42,216,211,255));
                     archive.AddComponent<SemiconArchiveTerminal>().Configure(archivePanel,
                         CreateGlow(archive.transform, new Color32(42,216,211,255)));
+                    var supply = CreateInteractionCube(parent, "INTERACTION CUBE - ROBOT SUPPLY CENTER",
+                        new Vector3(2.3f, 1.2f, 2.4f), new Vector3(3f, 2.4f, 2.2f), new Color32(247,169,30,255));
+                    supply.AddComponent<SemiconGachaTerminal>().Configure(gachaPanel,
+                        CreateGlow(supply.transform, new Color32(247,169,30,255)));
                     break;
                 }
             }

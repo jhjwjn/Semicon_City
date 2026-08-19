@@ -7,7 +7,6 @@ namespace SemiconCity.Game
     public sealed class SemiconHud : MonoBehaviour
     {
         [SerializeField] private Text creditsText;
-        [SerializeField] private Text researchText;
         [SerializeField] private Text objectiveIndexText;
         [SerializeField] private Text objectiveTitleText;
         [SerializeField] private Text objectiveDetailText;
@@ -90,10 +89,6 @@ namespace SemiconCity.Game
             if (creditsText != null)
             {
                 creditsText.text = $"{state.Credits:N0}";
-            }
-            if (researchText != null)
-            {
-                researchText.text = $"{state.ResearchPoints}";
             }
         }
 

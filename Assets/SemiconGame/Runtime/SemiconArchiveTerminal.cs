@@ -6,7 +6,7 @@ namespace SemiconCity.Game
     {
         [SerializeField] private SemiconArchivePanel panel;
         [SerializeField] private Transform glowTransform;
-        public override string Prompt => "[E]  FAB ARCHIVE\n공정·제품·자재·인력·디스크·고객 기록 열람";
+        public override string Prompt => "[E]  FAB ARCHIVE\n공정·제품·자재·로봇·디스크·고객 기록 열람";
         public void Configure(SemiconArchivePanel targetPanel, Transform glow) { panel = targetPanel; glowTransform = glow; }
         private void Update()
         {

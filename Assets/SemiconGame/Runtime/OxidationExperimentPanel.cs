@@ -7,7 +7,7 @@ namespace SemiconCity.Game
 {
     public sealed class OxidationExperimentPanel : MonoBehaviour
     {
-        private const int ExperimentCost = 8;
+        private const int ExperimentCost = SemiconGameState.ExperimentCreditCost;
 
         [SerializeField] private CanvasGroup panelGroup;
         [SerializeField] private RectTransform panelFrame;
@@ -104,9 +104,9 @@ namespace SemiconCity.Game
         {
             if (isRunning) return;
             var state = SemiconGameState.Instance;
-            if (state == null || !state.TrySpendResearch(ExperimentCost))
+            if (state == null || !state.TrySpendCredits(ExperimentCost))
             {
-                hud?.ShowToast($"연구 데이터가 부족합니다. 실험에는 {ExperimentCost}개가 필요합니다.");
+                hud?.ShowToast($"실험 비용이 부족합니다. 1회에 ₩{ExperimentCost:N0}이 필요합니다.");
                 return;
             }
             StartCoroutine(RunExperimentSequence());
@@ -119,7 +119,7 @@ namespace SemiconCity.Game
             if (resultStatusText != null)
             {
                 resultStatusText.text = "FURNACE RUNNING  /  산화막 성장 결과 분석 중";
-                resultStatusText.color = new Color32(41, 211, 207, 255);
+                resultStatusText.color = SemiconUiPalette.Blue;
             }
 
             if (heatLine != null)
@@ -172,10 +172,10 @@ namespace SemiconCity.Game
                         ? "NEAR PROCESS WINDOW  /  목표 막 두께에 더 가깝게 조정하세요."
                         : "OUT OF PROCESS WINDOW  /  온도와 산화 시간을 다시 조정하세요.";
                 resultStatusText.color = qualified
-                    ? new Color32(247, 169, 30, 255)
+                    ? SemiconUiPalette.Amber
                     : uniformity >= 84f
-                        ? new Color32(41, 211, 207, 255)
-                        : new Color32(238, 103, 89, 255);
+                        ? SemiconUiPalette.Mint
+                        : SemiconUiPalette.Danger;
             }
 
             SemiconGameState.Instance?.RecordOxidationExperiment(temperature, processTime, thickness,
@@ -199,7 +199,7 @@ namespace SemiconCity.Game
             {
                 recipeText.text = state.OxidationExperimentCount == 0
                     ? "아직 저장된 산화 실험 데이터가 없습니다.\n첫 실험을 실행해 공정창을 탐색하세요."
-                    : $"BEST RUN  #{state.OxidationExperimentCount:00}\n\n온도      {state.BestOxidationTemperature} °C\n산화 시간   {state.BestOxidationTime} min\n\n막 두께     {state.BestOxideThickness:0.0} nm\n균일도      {state.BestOxideUniformity:0.0}%\n\n{(state.OxidationRecipeQualified ? "● OXIDE-01 레시피 등록 완료" : "○ 안정 범위 탐색 중")}";
+                    : $"등록 레시피  {state.GetRecipeVariantCount(SemiconRecipeKind.OxidizedWafer)}개\nBEST RUN  #{state.OxidationExperimentCount:00}\n\n온도      {state.BestOxidationTemperature} °C\n산화 시간   {state.BestOxidationTime} min\n\n막 두께     {state.BestOxideThickness:0.0} nm\n균일도      {state.BestOxideUniformity:0.0}%\n\n{(state.OxidationRecipeQualified ? "● 합격 조건은 각각 레시피로 저장됩니다" : "○ 안정 범위 탐색 중")}";
             }
             if (experimentCountText != null)
                 experimentCountText.text = $"EXPERIMENT LOG  /  {state.OxidationExperimentCount:00}";

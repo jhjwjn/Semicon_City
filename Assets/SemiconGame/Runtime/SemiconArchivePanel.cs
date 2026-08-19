@@ -17,6 +17,14 @@ namespace SemiconCity.Game
         [SerializeField] private Text sectionTitleText;
         [SerializeField] private Text summaryText;
         [SerializeField] private Text contentText;
+        [SerializeField] private GameObject robotCollectionPage;
+        [SerializeField] private Image[] robotCollectionImages;
+        [SerializeField] private Text[] robotCollectionNames;
+        [SerializeField] private Text[] robotCollectionStates;
+        [SerializeField] private GameObject diskCollectionPage;
+        [SerializeField] private Image[] diskCollectionImages;
+        [SerializeField] private Text[] diskCollectionNames;
+        [SerializeField] private Text[] diskCollectionStates;
         [SerializeField] private Button closeButton;
 
         private ArchiveTab selectedTab;
@@ -26,10 +34,17 @@ namespace SemiconCity.Game
         private bool isOpen;
 
         public void Configure(CanvasGroup group, RectTransform frame, Button[] tabs, Text code, Text title,
-            Text summary, Text content, Button close)
+            Text summary, Text content, GameObject robotPage, Image[] robotImages, Text[] robotNames,
+            Text[] robotStates, GameObject diskPage, Image[] diskImages, Text[] diskNames, Text[] diskStates,
+            Button close)
         {
             panelGroup = group; panelFrame = frame; tabButtons = tabs; sectionCodeText = code;
-            sectionTitleText = title; summaryText = summary; contentText = content; closeButton = close;
+            sectionTitleText = title; summaryText = summary; contentText = content;
+            robotCollectionPage = robotPage; robotCollectionImages = robotImages;
+            robotCollectionNames = robotNames; robotCollectionStates = robotStates;
+            diskCollectionPage = diskPage; diskCollectionImages = diskImages;
+            diskCollectionNames = diskNames; diskCollectionStates = diskStates;
+            closeButton = close;
         }
 
         private void Awake()
@@ -80,12 +95,17 @@ namespace SemiconCity.Game
         {
             var state = SemiconGameState.Instance;
             if (state == null) return;
-            var titles = new[] { "공정 도감", "제품 도감", "자재 도감", "인력·로봇", "디스크", "고객·계약" };
+            var titles = new[] { "공정 도감", "제품 도감", "자재 도감", "작업 로봇", "디스크", "고객·계약" };
             if (sectionCodeText != null) sectionCodeText.text = $"ARCHIVE SECTION  /  {(int)selectedTab + 1:00}";
             if (sectionTitleText != null) sectionTitleText.text = titles[(int)selectedTab];
             if (summaryText != null)
                 summaryText.text = $"PROCESS {state.UnlockedProcessCount} / 8     CONTRACT {state.CompletedContractKinds} / {SemiconContractCatalog.Count}     " +
                                    $"SAMPLE {state.CompletedSampleContractKinds} / 6";
+            var showRobots = selectedTab == ArchiveTab.Personnel;
+            var showDisks = selectedTab == ArchiveTab.Disk;
+            robotCollectionPage?.SetActive(showRobots);
+            diskCollectionPage?.SetActive(showDisks);
+            if (contentText != null) contentText.gameObject.SetActive(!showRobots && !showDisks);
             if (contentText != null) contentText.text = selectedTab switch
             {
                 ArchiveTab.Process => BuildProcessText(state),
@@ -95,14 +115,87 @@ namespace SemiconCity.Game
                 ArchiveTab.Disk => BuildDiskText(state),
                 _ => BuildClientText(state)
             };
+            if (showRobots) RefreshRobotCollection(state);
+            if (showDisks) RefreshDiskCollection(state);
             for (var index = 0; index < tabButtons.Length; index++)
             {
                 var label = tabButtons[index]?.GetComponentInChildren<Text>(true);
                 if (label != null) label.text = titles[index] + (index == (int)selectedTab ? "  ◀" : string.Empty);
-                var graphic = tabButtons[index]?.targetGraphic;
-                if (graphic != null) graphic.color = index == (int)selectedTab
-                    ? new Color32(31, 190, 185, 255)
-                    : new Color32(6, 72, 77, 255);
+                SemiconUiPalette.SetButtonSelection(tabButtons[index], index == (int)selectedTab);
+            }
+        }
+
+        private void RefreshRobotCollection(SemiconGameState state)
+        {
+            var count = Mathf.Min(SemiconFactoryDefinitions.RobotCount,
+                robotCollectionImages != null ? robotCollectionImages.Length : 0);
+            for (var index = 0; index < count; index++)
+            {
+                var robot = SemiconFactoryDefinitions.GetRobotByCatalogIndex(index);
+                var definition = SemiconFactoryDefinitions.GetRobot(robot);
+                var owned = state.GetRobotOwnedCount(robot);
+                var highest = state.GetHighestRobotEnhancement(robot);
+                if (robotCollectionImages[index] != null)
+                {
+                    robotCollectionImages[index].sprite = SemiconGachaArt.GetRobotSprite(robot);
+                    robotCollectionImages[index].color = owned > 0
+                        ? Color.white
+                        : new Color(0.42f, 0.5f, 0.53f, 0.72f);
+                }
+                if (robotCollectionNames != null && index < robotCollectionNames.Length &&
+                    robotCollectionNames[index] != null)
+                {
+                    robotCollectionNames[index].text = $"{definition.Code}\n{definition.Name}";
+                }
+                if (robotCollectionStates != null && index < robotCollectionStates.Length &&
+                    robotCollectionStates[index] != null)
+                {
+                    robotCollectionStates[index].text = owned > 0
+                        ? $"{definition.Rarity}  ·  보유 {owned}  ·  {SemiconFactoryDefinitions.GetRobotEnhancementText(highest)}"
+                        : $"{definition.Rarity}  ·  미보유";
+                    robotCollectionStates[index].color = definition.Rarity switch
+                    {
+                        SemiconRobotRarity.SR => new Color32(184, 103, 0, 255),
+                        SemiconRobotRarity.R => new Color32(16, 139, 194, 255),
+                        _ => new Color32(76, 103, 119, 255)
+                    };
+                }
+            }
+        }
+
+        private void RefreshDiskCollection(SemiconGameState state)
+        {
+            var count = Mathf.Min(9, diskCollectionImages != null ? diskCollectionImages.Length : 0);
+            for (var index = 0; index < count; index++)
+            {
+                var disk = (SemiconDiskKind)(index % 3 + 1);
+                var grade = (SemiconDiskGrade)(index / 3 + 1);
+                var owned = state.GetDiskOwnedCount(disk, grade);
+                if (diskCollectionImages[index] != null)
+                {
+                    diskCollectionImages[index].sprite = SemiconGachaArt.GetDiskSprite(disk, grade);
+                    diskCollectionImages[index].color = owned > 0
+                        ? Color.white
+                        : new Color(0.42f, 0.5f, 0.53f, 0.72f);
+                }
+                if (diskCollectionNames != null && index < diskCollectionNames.Length &&
+                    diskCollectionNames[index] != null)
+                {
+                    diskCollectionNames[index].text = SemiconFactoryDefinitions.GetDiskName(disk);
+                }
+                if (diskCollectionStates != null && index < diskCollectionStates.Length &&
+                    diskCollectionStates[index] != null)
+                {
+                    diskCollectionStates[index].text = owned > 0
+                        ? $"GRADE {grade}  ·  보유 {owned}  ·  {SemiconFactoryDefinitions.GetDiskBonus(disk, grade)}"
+                        : $"GRADE {grade}  ·  미보유";
+                    diskCollectionStates[index].color = grade switch
+                    {
+                        SemiconDiskGrade.III => new Color32(184, 103, 0, 255),
+                        SemiconDiskGrade.II => new Color32(16, 139, 194, 255),
+                        _ => new Color32(76, 103, 119, 255)
+                    };
+                }
             }
         }
 
@@ -111,13 +204,13 @@ namespace SemiconCity.Game
             var rows = new[]
             {
                 $"01  WAFER       기초 웨이퍼     누적 {s.GetLifetimeProduced(SemiconRecipeKind.WaferSubstrate),4}  ·  STARTER RECIPE",
-                ProcessRow(2, "OXIDATION", "온도 / 시간", s.OxidationRecipeQualified, s.GetLifetimeProduced(SemiconRecipeKind.OxidizedWafer), $"BEST {s.BestOxidationTemperature}°C · {s.BestOxidationTime}min · 균일도 {s.BestOxideUniformity:0.0}%", s),
-                ProcessRow(3, "PHOTO", "노광량 / 초점", s.PhotoRecipeQualified, s.GetLifetimeProduced(SemiconRecipeKind.PhotoPatternedWafer), $"BEST {s.BestDose}mJ · {s.BestFocus:+0.00;-0.00;0.00}μm · 수율 {s.BestYield:0.0}%", s),
-                ProcessRow(4, "ETCH", "RF 파워 / 가스", s.EtchRecipeQualified, s.GetLifetimeProduced(SemiconRecipeKind.EtchedWafer), $"BEST {s.BestEtchPower}W · {s.BestEtchGasFlow}sccm · 프로파일 {s.BestEtchProfile:0.0}%", s),
-                ProcessRow(5, "DEPOSITION", "온도 / 압력", s.DepositionRecipeQualified, s.GetLifetimeProduced(SemiconRecipeKind.DepositedWafer), $"BEST {s.BestDepositionTemperature}°C · {s.BestDepositionPressure}Torr · 균일도 {s.BestDepositionUniformity:0.0}%", s),
-                ProcessRow(6, "METAL", "파워 / 시간", s.MetalRecipeQualified, s.GetLifetimeProduced(SemiconRecipeKind.MetalizedWafer), $"BEST {s.BestMetalPower}W · {s.BestMetalTime}s · 저항 {s.BestMetalResistance:0.000}Ω", s),
-                ProcessRow(7, "EDS", "전압 / 누설 기준", s.EdsRecipeQualified, s.GetLifetimeProduced(SemiconRecipeKind.TestedWafer), $"BEST {s.BestEdsVoltage}V · {s.BestEdsLeakageThreshold}μA · 검출 {s.BestEdsDetection:0.0}%", s),
-                ProcessRow(8, "PACKAGE", "본딩 / 몰딩 온도", s.PackageRecipeQualified, s.GetLifetimeProduced(SemiconRecipeKind.Sc01ControlSensor), $"BEST {s.BestPackageBondingForce}gf · {s.BestPackageMoldingTemperature}°C · 합격 {s.BestPackageFinalPass:0.0}%", s)
+                ProcessRow(2, "OXIDATION", "온도 / 시간", s.OxidationRecipeQualified, s.GetLifetimeProduced(SemiconRecipeKind.OxidizedWafer), $"등록 {s.GetRecipeVariantCount(SemiconRecipeKind.OxidizedWafer)}개 · BEST {s.BestOxidationTemperature}°C · {s.BestOxidationTime}min · 균일도 {s.BestOxideUniformity:0.0}%", s),
+                ProcessRow(3, "PHOTO", "노광량 / 초점", s.PhotoRecipeQualified, s.GetLifetimeProduced(SemiconRecipeKind.PhotoPatternedWafer), $"등록 {s.GetRecipeVariantCount(SemiconRecipeKind.PhotoPatternedWafer)}개 · BEST {s.BestDose}mJ · {s.BestFocus:+0.00;-0.00;0.00}μm · 수율 {s.BestYield:0.0}%", s),
+                ProcessRow(4, "ETCH", "RF 파워 / 가스", s.EtchRecipeQualified, s.GetLifetimeProduced(SemiconRecipeKind.EtchedWafer), $"등록 {s.GetRecipeVariantCount(SemiconRecipeKind.EtchedWafer)}개 · BEST {s.BestEtchPower}W · {s.BestEtchGasFlow}sccm · 프로파일 {s.BestEtchProfile:0.0}%", s),
+                ProcessRow(5, "DEPOSITION", "온도 / 압력", s.DepositionRecipeQualified, s.GetLifetimeProduced(SemiconRecipeKind.DepositedWafer), $"등록 {s.GetRecipeVariantCount(SemiconRecipeKind.DepositedWafer)}개 · BEST {s.BestDepositionTemperature}°C · {s.BestDepositionPressure}Torr · 균일도 {s.BestDepositionUniformity:0.0}%", s),
+                ProcessRow(6, "METAL", "파워 / 시간", s.MetalRecipeQualified, s.GetLifetimeProduced(SemiconRecipeKind.MetalizedWafer), $"등록 {s.GetRecipeVariantCount(SemiconRecipeKind.MetalizedWafer)}개 · BEST {s.BestMetalPower}W · {s.BestMetalTime}s · 저항 {s.BestMetalResistance:0.000}Ω", s),
+                ProcessRow(7, "EDS", "전압 / 누설 기준", s.EdsRecipeQualified, s.GetLifetimeProduced(SemiconRecipeKind.TestedWafer), $"등록 {s.GetRecipeVariantCount(SemiconRecipeKind.TestedWafer)}개 · BEST {s.BestEdsVoltage}V · {s.BestEdsLeakageThreshold}μA · 검출 {s.BestEdsDetection:0.0}%", s),
+                ProcessRow(8, "PACKAGE", "본딩 / 몰딩 온도", s.PackageRecipeQualified, s.GetLifetimeProduced(SemiconRecipeKind.Sc01ControlSensor), $"등록 {s.GetRecipeVariantCount(SemiconRecipeKind.Sc01ControlSensor)}개 · BEST {s.BestPackageBondingForce}gf · {s.BestPackageMoldingTemperature}°C · 합격 {s.BestPackageFinalPass:0.0}%", s)
             };
             return string.Join("\n\n", rows);
         }
@@ -152,25 +245,54 @@ namespace SemiconCity.Game
 
         private static string BuildPersonnelText(SemiconGameState s)
         {
-            var builder = new StringBuilder("PERSONNEL DATABASE  /  보유 인력과 현재 배치\n\n");
+            var builder = new StringBuilder("OPERATION ROBOT DATABASE  /  보유 로봇과 현재 배치\n\n");
             for (var index = 0; index < SemiconFactoryDefinitions.SlotCount; index++)
             {
                 var slot = s.GetFactorySlot(index);
+                slot.EnsureCrewSlots();
                 builder.AppendLine($"SLOT {index + 1:00}   {(slot.machineInstalled ? "MACHINE ONLINE" : "EMPTY SLOT")}");
-                builder.AppendLine($"          {SemiconFactoryDefinitions.GetWorkerName(slot.worker)}");
-                builder.AppendLine($"          {SemiconFactoryDefinitions.GetWorkerBonus(slot.worker)}\n");
+                for (var crew = 0; crew < SemiconFactoryDefinitions.RobotsPerSlot; crew++)
+                    builder.AppendLine($"  R{crew + 1}  {SemiconFactoryDefinitions.GetRobotName(slot.robots[crew])}  " +
+                                       SemiconFactoryDefinitions.GetRobotEnhancementText(slot.robotEnhancements[crew]));
+                builder.AppendLine();
+            }
+            builder.AppendLine("OWNED COLLECTION");
+            for (var index = 0; index < SemiconFactoryDefinitions.RobotCount; index++)
+            {
+                var robot = SemiconFactoryDefinitions.GetRobotByCatalogIndex(index);
+                var count = s.GetRobotOwnedCount(robot);
+                if (count <= 0) continue;
+                for (var level = 0; level <= SemiconFactoryDefinitions.MaxRobotEnhancement; level++)
+                {
+                    var levelCount = s.GetRobotOwnedCount(robot, level);
+                    if (levelCount > 0) builder.AppendLine($"{SemiconFactoryDefinitions.GetRobotRarityText(robot),-2}  " +
+                        $"{SemiconFactoryDefinitions.GetRobotName(robot),-24}  " +
+                        $"{SemiconFactoryDefinitions.GetRobotEnhancementText(level),-4} × {levelCount}");
+                }
             }
             return builder.ToString();
         }
 
         private static string BuildDiskText(SemiconGameState s)
         {
-            var builder = new StringBuilder("ABILITY DISK ARCHIVE  /  설비 장착 현황\n\n");
+            var builder = new StringBuilder("TRAIT DISK ARCHIVE  /  보유 및 장착 현황\n\n");
             for (var index = 0; index < SemiconFactoryDefinitions.SlotCount; index++)
             {
                 var slot = s.GetFactorySlot(index);
-                builder.AppendLine($"SLOT {index + 1:00}   {SemiconFactoryDefinitions.GetDiskName(slot.disk)}");
-                builder.AppendLine($"          {SemiconFactoryDefinitions.GetDiskBonus(slot.disk)}\n");
+                slot.EnsureCrewSlots();
+                builder.AppendLine($"SLOT {index + 1:00}");
+                for (var crew = 0; crew < SemiconFactoryDefinitions.RobotsPerSlot; crew++)
+                    builder.AppendLine($"  R{crew + 1}  {SemiconFactoryDefinitions.GetDiskName(slot.disks[crew], slot.diskGrades[crew])}");
+                builder.AppendLine();
+            }
+            builder.AppendLine("OWNED COLLECTION");
+            for (var kind = 1; kind <= 3; kind++)
+            for (var grade = 1; grade <= 3; grade++)
+            {
+                var disk = (SemiconDiskKind)kind;
+                var diskGrade = (SemiconDiskGrade)grade;
+                var count = s.GetDiskOwnedCount(disk, diskGrade);
+                if (count > 0) builder.AppendLine($"{SemiconFactoryDefinitions.GetDiskName(disk, diskGrade),-28}  × {count}");
             }
             return builder.ToString();
         }

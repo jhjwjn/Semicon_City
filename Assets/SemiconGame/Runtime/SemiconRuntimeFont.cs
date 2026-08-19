@@ -1,3 +1,4 @@
+using System.Text;
 using UnityEngine;
 using UnityEngine.UI;
 
@@ -5,40 +6,56 @@ namespace SemiconCity.Game
 {
     public sealed class SemiconRuntimeFont : MonoBehaviour
     {
-        private const string CommonDynamicCharacters = "0123456789,.-+/%₩m초분개";
-
-        private Font runtimeFont;
+        [SerializeField, TextArea] private string preloadCharacters;
 
         private void Awake()
         {
-            runtimeFont = Font.CreateDynamicFontFromOSFont(
-                new[] { "Noto Sans KR", "Malgun Gothic", "맑은 고딕", "Arial" },
-                28);
-            if (runtimeFont == null)
+            var sharedFont = SemiconCrispText.GetSharedFont();
+            if (sharedFont == null)
             {
                 return;
             }
 
-            if (runtimeFont.material != null && runtimeFont.material.mainTexture != null)
-            {
-                runtimeFont.material.mainTexture.filterMode = FilterMode.Bilinear;
-            }
+            // Complete this once before the first canvas render. Runtime counters,
+            // tab changes and tutorial messages then reuse the same atlas forever.
+            sharedFont.RequestCharactersInTexture(
+                preloadCharacters ?? string.Empty,
+                SemiconCrispText.RasterFontSize,
+                FontStyle.Normal);
+            var atlas = sharedFont.material != null ? sharedFont.material.mainTexture : null;
+            var atlasSize = atlas != null ? $"{atlas.width}x{atlas.height}" : "none";
+            Debug.Log($"[Semicon Font] Legacy UI atlas warmed / glyphs={preloadCharacters?.Length ?? 0} / " +
+                      $"raster={SemiconCrispText.RasterFontSize} / texture=" +
+                      atlasSize);
 
             var labels = GetComponentsInChildren<Text>(true);
-            foreach (var label in labels)
+            var hudFont = Resources.Load<Font>("Fonts/SemiconHudBold");
+            if (hudFont != null)
             {
-                runtimeFont.RequestCharactersInTexture(
-                    (label.text ?? string.Empty) + CommonDynamicCharacters,
-                    label.fontSize,
-                    label.fontStyle);
+                var hudCharacters = new StringBuilder(" !\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~₩·→▶◀×");
+                foreach (var label in labels)
+                {
+                    if (IsHudLabel(label.transform)) hudCharacters.Append(label.text);
+                }
+                hudFont.RequestCharactersInTexture(hudCharacters.ToString(), SemiconCrispText.RasterFontSize,
+                    FontStyle.Normal);
             }
 
-            // Preload before any UI Text references the font. Runtime number changes then reuse
-            // the existing atlas instead of invalidating unrelated Korean labels for one frame.
             foreach (var label in labels)
             {
-                label.font = runtimeFont;
+                label.font = hudFont != null && IsHudLabel(label.transform) ? hudFont : sharedFont;
+                label.fontStyle = FontStyle.Normal;
+                label.SetVerticesDirty();
             }
+        }
+
+        private static bool IsHudLabel(Transform label)
+        {
+            for (var current = label; current != null; current = current.parent)
+            {
+                if (current.name.EndsWith(" Screen", System.StringComparison.Ordinal)) return false;
+            }
+            return true;
         }
     }
 }

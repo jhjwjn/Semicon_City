@@ -1,7 +1,9 @@
 using System;
 using System.Collections;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
 
@@ -12,6 +14,23 @@ namespace SemiconCity.Game
         private IEnumerator Start()
         {
             var arguments = Environment.GetCommandLineArgs();
+            if (arguments.Any(argument => argument.StartsWith("--semicon-", StringComparison.Ordinal) &&
+                                          argument.EndsWith("-smoke-test", StringComparison.Ordinal)))
+            {
+                transform.SetParent(null);
+                DontDestroyOnLoad(gameObject);
+            }
+
+            if (arguments.Contains("--semicon-recipe-variants-smoke-test"))
+            {
+                yield return RunRecipeVariantsSmokeTest();
+                yield break;
+            }
+            if (arguments.Contains("--semicon-ui-gallery-smoke-test"))
+            {
+                yield return RunUnifiedInterfaceGallerySmokeTest();
+                yield break;
+            }
             if (arguments.Contains("--semicon-postgame-smoke-test"))
             {
                 yield return RunPostgameContractsAndArchiveSmokeTest();
@@ -32,6 +51,11 @@ namespace SemiconCity.Game
                 yield return RunMarketSmokeTest();
                 yield break;
             }
+            if (arguments.Contains("--semicon-production-batch-smoke-test"))
+            {
+                yield return RunProductionBatchSmokeTest();
+                yield break;
+            }
             if (arguments.Contains("--semicon-factory-smoke-test"))
             {
                 yield return RunFactoryProgressionSmokeTest();
@@ -42,6 +66,16 @@ namespace SemiconCity.Game
                 yield return RunFactoryLoadoutSmokeTest();
                 yield break;
             }
+            if (arguments.Contains("--semicon-robot-crew-smoke-test"))
+            {
+                yield return RunRobotCrewAndEnhancementSmokeTest();
+                yield break;
+            }
+            if (arguments.Contains("--semicon-gacha-smoke-test"))
+            {
+                yield return RunGachaSmokeTest();
+                yield break;
+            }
             if (arguments.Contains("--semicon-wafer-smoke-test"))
             {
                 yield return RunWaferProductionSmokeTest();
@@ -50,6 +84,11 @@ namespace SemiconCity.Game
             if (arguments.Contains("--semicon-oxidation-smoke-test"))
             {
                 yield return RunOxidationProductionSmokeTest();
+                yield break;
+            }
+            if (arguments.Contains("--semicon-photo-ui-smoke-test"))
+            {
+                yield return RunPhotoUiSmokeTest();
                 yield break;
             }
             if (arguments.Contains("--semicon-photo-smoke-test"))
@@ -116,9 +155,9 @@ namespace SemiconCity.Game
 
             runButton.onClick.Invoke();
             yield return new WaitForSecondsRealtime(3.35f);
-            if (state.ExperimentCount != 1 || state.ResearchPoints != 112)
+            if (state.ExperimentCount != 1 || state.Credits != 24200)
             {
-                Debug.LogError($"[Semicon Smoke] 실험 결과 저장 실패: count={state.ExperimentCount}, research={state.ResearchPoints}");
+                Debug.LogError($"[Semicon Smoke] 실험 결과 저장 실패: count={state.ExperimentCount}, credits={state.Credits}");
                 Application.Quit(13);
                 yield break;
             }
@@ -126,8 +165,185 @@ namespace SemiconCity.Game
             var outputPath = Path.GetFullPath(Path.Combine(Application.dataPath, "..",
                 $"semicon-runtime-smoke-{Screen.width}x{Screen.height}.png"));
             yield return CaptureScreen(outputPath);
-            Debug.Log($"[Semicon Smoke] PASS / 실험 1회 / 연구 데이터 112 / Capture={outputPath}");
+            Debug.Log($"[Semicon Smoke] PASS / 실험 1회 / 비용 ₩800 / Capture={outputPath}");
             Application.Quit(0);
+        }
+
+        private IEnumerator RunUnifiedInterfaceGallerySmokeTest()
+        {
+            yield return null;
+            var state = SemiconGameState.Instance;
+            var player = FindFirstObjectByType<SemiconPlayerController>();
+            var cameraController = FindFirstObjectByType<SemiconThirdPersonCamera>();
+            var oxidation = FindFirstObjectByType<OxidationExperimentPanel>(FindObjectsInactive.Include);
+            var market = FindFirstObjectByType<SemiconMarketPanel>(FindObjectsInactive.Include);
+            var production = FindFirstObjectByType<SemiconProductionPanel>(FindObjectsInactive.Include);
+            var loadout = FindFirstObjectByType<SemiconFactoryLoadoutPanel>(FindObjectsInactive.Include);
+            var contracts = FindFirstObjectByType<SemiconContractPanel>(FindObjectsInactive.Include);
+            var archive = FindFirstObjectByType<SemiconArchivePanel>(FindObjectsInactive.Include);
+            var gacha = FindFirstObjectByType<SemiconGachaPanel>(FindObjectsInactive.Include);
+            if (state == null || player == null || cameraController == null || oxidation == null || market == null ||
+                production == null || loadout == null || contracts == null || archive == null || gacha == null)
+            {
+                Debug.LogError("[Semicon UI Gallery] Required interface component is missing.");
+                Application.Quit(121);
+                yield break;
+            }
+
+            state.ResetProgress();
+
+            oxidation.Open(player, cameraController);
+            yield return new WaitForSecondsRealtime(0.4f);
+            InvokeButton("Run Oxidation Experiment Button");
+            yield return new WaitForSecondsRealtime(1.65f);
+            var oxidationPath = GetGalleryCapturePath("oxidation");
+            yield return CaptureScreen(oxidationPath);
+            oxidation.Close();
+            yield return new WaitForSecondsRealtime(0.25f);
+
+            market.Open(player, cameraController);
+            yield return new WaitForSecondsRealtime(0.4f);
+            InvokeButton("Buy Silicon Button");
+            InvokeButton("Buy Process Gas Button");
+            yield return new WaitForSecondsRealtime(0.1f);
+            var marketPath = GetGalleryCapturePath("market");
+            yield return CaptureScreen(marketPath);
+            InvokeButton("Open Warehouse Button");
+            yield return new WaitForSecondsRealtime(0.15f);
+            var warehousePath = GetGalleryCapturePath("warehouse");
+            yield return CaptureScreen(warehousePath);
+            InvokeButton("Close Warehouse Button");
+            InvokeButton("Market Sales Tab Button");
+            yield return new WaitForSecondsRealtime(0.15f);
+            var salesPath = GetGalleryCapturePath("sales");
+            yield return CaptureScreen(salesPath);
+            market.Close();
+            yield return new WaitForSecondsRealtime(0.25f);
+
+            production.Open(player, cameraController, 0);
+            yield return new WaitForSecondsRealtime(0.4f);
+            InvokeButton("Select Oxidation Recipe Button");
+            InvokeButton("Increase Production Cycle Button");
+            InvokeButton("Increase Production Cycle Button");
+            yield return new WaitForSecondsRealtime(0.15f);
+            var productionPath = GetGalleryCapturePath("production");
+            yield return CaptureScreen(productionPath);
+            production.Close();
+            yield return new WaitForSecondsRealtime(0.25f);
+
+            loadout.Open(0, player, cameraController);
+            yield return new WaitForSecondsRealtime(0.4f);
+            var loadoutPath = GetGalleryCapturePath("loadout");
+            yield return CaptureScreen(loadoutPath);
+            loadout.Close();
+            yield return new WaitForSecondsRealtime(0.25f);
+
+            gacha.Open(player, cameraController);
+            yield return new WaitForSecondsRealtime(0.4f);
+            var gachaPath = GetGalleryCapturePath("gacha");
+            yield return CaptureScreen(gachaPath);
+            gacha.Close();
+            yield return new WaitForSecondsRealtime(0.25f);
+
+            contracts.Open(player, cameraController);
+            yield return new WaitForSecondsRealtime(0.4f);
+            var contractPath = GetGalleryCapturePath("contracts");
+            yield return CaptureScreen(contractPath);
+            contracts.Close();
+            yield return new WaitForSecondsRealtime(0.25f);
+
+            archive.Open(player, cameraController);
+            yield return new WaitForSecondsRealtime(0.4f);
+            var archivePath = GetGalleryCapturePath("archive");
+            yield return CaptureScreen(archivePath);
+            InvokeButton("Archive Tab 04");
+            yield return new WaitForSecondsRealtime(0.15f);
+            var archiveRobotsPath = GetGalleryCapturePath("archive-robots");
+            yield return CaptureScreen(archiveRobotsPath);
+            InvokeButton("Archive Tab 05");
+            yield return new WaitForSecondsRealtime(0.15f);
+            var archiveDisksPath = GetGalleryCapturePath("archive-disks");
+            yield return CaptureScreen(archiveDisksPath);
+            archive.Close();
+            yield return new WaitForSecondsRealtime(0.25f);
+
+            Debug.Log($"[Semicon UI Gallery] PASS / {Screen.width}x{Screen.height} / " +
+                      $"Oxidation={oxidationPath} / Market={marketPath} / Production={productionPath} / " +
+                      $"Warehouse={warehousePath} / Sales={salesPath} / Loadout={loadoutPath} / " +
+                      $"Gacha={gachaPath} / Contracts={contractPath} / Archive={archivePath} / " +
+                      $"Robots={archiveRobotsPath} / Disks={archiveDisksPath}");
+            Application.Quit(0);
+        }
+
+        private IEnumerator RunRecipeVariantsSmokeTest()
+        {
+            yield return null;
+            var state = SemiconGameState.Instance;
+            if (state == null)
+            {
+                Debug.LogError("[Semicon Recipe Variants] Game state missing.");
+                Application.Quit(131);
+                yield break;
+            }
+
+            state.ResetProgress();
+            state.RecordOxidationExperiment(1000, 60, 100f, 98f, true);
+            state.RecordOxidationExperiment(1020, 50, 104f, 94f, true);
+            var count = state.GetRecipeVariantCount(SemiconRecipeKind.OxidizedWafer);
+            var first = state.GetRecipeVariant(SemiconRecipeKind.OxidizedWafer, 0);
+            var second = state.GetRecipeVariant(SemiconRecipeKind.OxidizedWafer, 1);
+            if (count != 2 || first == null || second == null || first.primaryParameter == second.primaryParameter)
+            {
+                Debug.LogError($"[Semicon Recipe Variants] Registration mismatch: count={count}");
+                Application.Quit(132);
+                yield break;
+            }
+
+            var reason = string.Empty;
+            if (!state.TryBuyMaterial(SemiconMaterialKind.Silicon, 2) ||
+                !state.TryBuyMaterial(SemiconMaterialKind.ProcessGas, 1) ||
+                !state.TryStartProduction(0, SemiconRecipeKind.WaferSubstrate, 1, out var waferJob,
+                    out reason))
+            {
+                Debug.LogError($"[Semicon Recipe Variants] Wafer preparation failed: {reason}");
+                Application.Quit(133);
+                yield break;
+            }
+            yield return new WaitForSecondsRealtime(waferJob.TotalSeconds + 0.25f);
+            if (!state.TryCollectProduction(0, out _, out _, out _, out reason))
+            {
+                Debug.LogError($"[Semicon Recipe Variants] Wafer collection failed: {reason}");
+                Application.Quit(134);
+                yield break;
+            }
+
+            var firstQuality = state.PreviewProductionQuality(0, SemiconRecipeKind.OxidizedWafer, 0);
+            var secondQuality = state.PreviewProductionQuality(0, SemiconRecipeKind.OxidizedWafer, 1);
+            if (firstQuality == secondQuality)
+            {
+                Debug.LogError($"[Semicon Recipe Variants] Quality preview did not change: {firstQuality}");
+                Application.Quit(135);
+                yield break;
+            }
+            if (!state.TryStartProduction(0, SemiconRecipeKind.OxidizedWafer, 1, 1, out var oxideJob,
+                    out reason) || oxideJob.Quality != secondQuality)
+            {
+                Debug.LogError($"[Semicon Recipe Variants] Selection mismatch: first={firstQuality}, " +
+                               $"second={secondQuality}, job={oxideJob.Quality}, reason={reason}");
+                Application.Quit(136);
+                yield break;
+            }
+
+            Debug.Log($"[Semicon Recipe Variants] PASS / registered={count} / " +
+                      $"{first.DisplayCode} quality={firstQuality} / {second.DisplayCode} quality={secondQuality}");
+            state.ResetProgress();
+            Application.Quit(0);
+        }
+
+        private static string GetGalleryCapturePath(string screenName)
+        {
+            return Path.GetFullPath(Path.Combine(Application.dataPath, "..",
+                $"semicon-unified-{screenName}-{Screen.width}x{Screen.height}.png"));
         }
 
         private IEnumerator RunFirstTutorialSmokeTest()
@@ -201,12 +417,12 @@ namespace SemiconCity.Game
             yield return new WaitForSecondsRealtime(0.25f);
             if (!state.FirstTutorialCompleted || state.UnlockedProcessCount != 2 ||
                 state.WaferStock != 1 || state.SiliconStock != 8 ||
-                state.Credits != 24700 || state.ResearchPoints != 132 ||
+                state.Credits != 24700 ||
                 tutorial.CurrentObjectiveKey != "EXPERIMENT_02")
             {
                 Debug.LogError($"[Semicon Tutorial Smoke] Completion mismatch: " +
                     $"complete={state.FirstTutorialCompleted}, wafer={state.WaferStock}, " +
-                    $"silicon={state.SiliconStock}, credits={state.Credits}, research={state.ResearchPoints}, " +
+                    $"silicon={state.SiliconStock}, credits={state.Credits}, " +
                     $"objective={tutorial.CurrentObjectiveKey}, title={hud.CurrentObjectiveTitle}");
                 Application.Quit(29);
                 yield break;
@@ -216,7 +432,7 @@ namespace SemiconCity.Game
                 $"semicon-tutorial-complete-{Screen.width}x{Screen.height}.png"));
             yield return CaptureScreen(completePath);
             Debug.Log($"[Semicon Tutorial Smoke] PASS / buy silicon→start wafer→wait→collect→reward / " +
-                $"credits=24700 / research=132 / Start={initialPath} / Complete={completePath}");
+                $"credits=24700 / Start={initialPath} / Complete={completePath}");
             state.ResetProgress();
             Application.Quit(0);
         }
@@ -276,9 +492,9 @@ namespace SemiconCity.Game
 
             foreach (var step in steps)
             {
-                if (!state.TrySpendResearch(8))
+                if (!state.TrySpendCredits(SemiconGameState.ExperimentCreditCost))
                 {
-                    Debug.LogError($"[Semicon Campaign Smoke] Research spend failed at process {step.process}.");
+                    Debug.LogError($"[Semicon Campaign Smoke] Experiment cost failed at process {step.process}.");
                     Application.Quit(35);
                     yield break;
                 }
@@ -299,7 +515,8 @@ namespace SemiconCity.Game
                 }
             }
 
-            if (tutorial.CurrentObjectiveKey != "EXPERIMENT_08" || !state.TrySpendResearch(8))
+            if (tutorial.CurrentObjectiveKey != "EXPERIMENT_08" ||
+                !state.TrySpendCredits(SemiconGameState.ExperimentCreditCost))
             {
                 Debug.LogError($"[Semicon Campaign Smoke] Package objective mismatch: {tutorial.CurrentObjectiveKey}");
                 Application.Quit(38);
@@ -332,13 +549,18 @@ namespace SemiconCity.Game
             }
             yield return null;
 
-            if (!state.FirstOrderCompleted || state.FinishedProductStock != 0 || state.Credits != 29050 ||
-                state.ResearchPoints != 106 || state.UnlockedProcessCount != 8 ||
-                tutorial.CurrentObjectiveKey != "POSTGAME_CONTRACT")
+            if (!state.FirstOrderCompleted || state.FinishedProductStock != 0 || state.Credits != 23450 ||
+                state.UnlockedProcessCount != 8 ||
+                tutorial.CurrentObjectiveKey != "POSTGAME_CONTRACT" ||
+                state.GetRobotBaseEquivalentCount(SemiconRobotKind.Bolt01) != 2 ||
+                state.GetRobotBaseEquivalentCount(SemiconRobotKind.Swift02) != 2 ||
+                state.GetRobotBaseEquivalentCount(SemiconRobotKind.Gauge03) != 2 ||
+                state.GetRobotBaseEquivalentCount(SemiconRobotKind.Mule04) != 1 ||
+                state.GetRobotBaseEquivalentCount(SemiconRobotKind.Pico05) != 1)
             {
                 Debug.LogError($"[Semicon Campaign Smoke] Final state mismatch: order={state.FirstOrderCompleted}, " +
                                $"finished={state.FinishedProductStock}, credits={state.Credits}, " +
-                               $"research={state.ResearchPoints}, unlocked={state.UnlockedProcessCount}, " +
+                               $"unlocked={state.UnlockedProcessCount}, " +
                                $"objective={tutorial.CurrentObjectiveKey}");
                 Application.Quit(42);
                 yield break;
@@ -350,7 +572,7 @@ namespace SemiconCity.Game
             yield return new WaitForSecondsRealtime(0.35f);
             yield return CaptureScreen(outputPath);
             Debug.Log($"[Semicon Campaign Smoke] PASS / 8 processes unlocked→order accepted→SC-01 delivered / " +
-                      $"credits=29050 / research=106 / Capture={outputPath}");
+                      $"8 basic robot rewards / credits=23450 / Capture={outputPath}");
             state.ResetProgress();
             Application.Quit(0);
         }
@@ -361,9 +583,11 @@ namespace SemiconCity.Game
             var state = SemiconGameState.Instance;
             var contractPanel = FindFirstObjectByType<SemiconContractPanel>(FindObjectsInactive.Include);
             var archivePanel = FindFirstObjectByType<SemiconArchivePanel>(FindObjectsInactive.Include);
+            var marketPanel = FindFirstObjectByType<SemiconMarketPanel>(FindObjectsInactive.Include);
             var player = FindFirstObjectByType<SemiconPlayerController>();
             var cameraController = FindFirstObjectByType<SemiconThirdPersonCamera>();
-            if (state == null || contractPanel == null || archivePanel == null || player == null || cameraController == null)
+            if (state == null || contractPanel == null || archivePanel == null || marketPanel == null ||
+                player == null || cameraController == null)
             {
                 Debug.LogError("[Semicon Postgame Smoke] Required contract/archive components are missing.");
                 Application.Quit(51);
@@ -372,12 +596,14 @@ namespace SemiconCity.Game
 
             state.ResetProgress();
             var reason = string.Empty;
+            state.GrantGachaRewardForSmokeTest(SemiconRobotKind.Aurora13, SemiconDiskKind.Quality,
+                SemiconDiskGrade.III);
             if (!state.TryBuyMaterial(SemiconMaterialKind.Silicon, 30) ||
                 !state.TryBuyMaterial(SemiconMaterialKind.ProcessGas, 30) ||
                 !state.TryBuyMaterial(SemiconMaterialKind.Chemicals, 20) ||
                 !state.TryBuyMaterial(SemiconMaterialKind.MetalTarget, 10) ||
-                !state.TryAssignWorker(0, SemiconWorkerKind.Mina, out reason) ||
-                !state.TryAssignDisk(0, SemiconDiskKind.Quality, out reason))
+                !state.TryAssignRobot(0, SemiconRobotKind.Aurora13, out reason) ||
+                !state.TryAssignDisk(0, SemiconDiskKind.Quality, SemiconDiskGrade.III, out reason))
             {
                 Debug.LogError("[Semicon Postgame Smoke] Initial setup failed: " + reason);
                 Application.Quit(52);
@@ -442,12 +668,47 @@ namespace SemiconCity.Game
             yield return CaptureScreen(contractPath);
             InvokeButton("Contract Close Button");
             yield return new WaitForSecondsRealtime(0.25f);
+
+            if (!state.TryBuyMaterial(SemiconMaterialKind.Silicon, 20) ||
+                !state.TryBuyMaterial(SemiconMaterialKind.ProcessGas, 20) ||
+                !state.TryBuyMaterial(SemiconMaterialKind.Chemicals, 20) ||
+                !state.TryBuyMaterial(SemiconMaterialKind.MetalTarget, 10) ||
+                !ProducePathImmediately(state, SemiconRecipeKind.Pm10PowerManagement, 1, out reason) ||
+                !ProducePathImmediately(state, SemiconRecipeKind.Dd20DisplayDriver, 1, out reason))
+            {
+                Debug.LogError("[Semicon Postgame Smoke] General sale inventory setup failed: " + reason);
+                Application.Quit(57);
+                yield break;
+            }
+            var salesCreditBefore = state.Credits;
+            var expectedSalesRevenue = state.GetSaleProductPrice(SemiconRecipeKind.Pm10PowerManagement) +
+                                       state.GetSaleProductPrice(SemiconRecipeKind.Dd20DisplayDriver);
+            marketPanel.Open(player, cameraController);
+            yield return new WaitForSecondsRealtime(0.3f);
+            if (!InvokeButton("Market Sales Tab Button") ||
+                !InvokeButton("Select PM-10 Sale Product Button") || !InvokeButton("Sell Finished Button") ||
+                !InvokeButton("Select DD-20 Sale Product Button") || !InvokeButton("Sell Finished Button") ||
+                state.Pm10Stock != 0 || state.Dd20Stock != 0 ||
+                state.Credits != salesCreditBefore + expectedSalesRevenue)
+            {
+                Debug.LogError($"[Semicon Postgame Smoke] Product sale flow mismatch: pm10={state.Pm10Stock}, " +
+                               $"dd20={state.Dd20Stock}, credits={state.Credits}, " +
+                               $"expected={salesCreditBefore + expectedSalesRevenue}");
+                Application.Quit(58);
+                yield break;
+            }
+            var salesPath = Path.GetFullPath(Path.Combine(Application.dataPath, "..",
+                $"semicon-postgame-sales-{Screen.width}x{Screen.height}.png"));
+            yield return CaptureScreen(salesPath);
+            marketPanel.Close();
+            yield return new WaitForSecondsRealtime(0.25f);
+
             archivePanel.Open(player, cameraController);
             yield return new WaitForSecondsRealtime(0.3f);
             if (!InvokeButton("Archive Tab 02"))
             {
                 Debug.LogError("[Semicon Postgame Smoke] Product archive tab button is missing.");
-                Application.Quit(57);
+                Application.Quit(59);
                 yield break;
             }
             var archiveContentObject = GameObject.Find("Archive Content");
@@ -455,14 +716,15 @@ namespace SemiconCity.Game
             if (archiveContent == null || !archiveContent.text.Contains("PM-10") || !archiveContent.text.Contains("DD-20"))
             {
                 Debug.LogError("[Semicon Postgame Smoke] Product archive content mismatch.");
-                Application.Quit(58);
+                Application.Quit(60);
                 yield break;
             }
             var archivePath = Path.GetFullPath(Path.Combine(Application.dataPath, "..",
                 $"semicon-fab-archive-{Screen.width}x{Screen.height}.png"));
             yield return CaptureScreen(archivePath);
-            Debug.Log($"[Semicon Postgame Smoke] PASS / contracts=9 / sample=6 / PM-10=3 / DD-20=4 / " +
-                      $"Contract={contractPath} / Archive={archivePath}");
+            Debug.Log($"[Semicon Postgame Smoke] PASS / contracts=9 / sample=6 / " +
+                      $"PM-10 and DD-20 general sales verified / Contract={contractPath} / " +
+                      $"Sales={salesPath} / Archive={archivePath}");
             state.ResetProgress();
             Application.Quit(0);
         }
@@ -519,9 +781,8 @@ namespace SemiconCity.Game
             var state = SemiconGameState.Instance;
             var player = FindFirstObjectByType<SemiconPlayerController>();
             var cameraController = FindFirstObjectByType<SemiconThirdPersonCamera>();
-            var terminal = FindFirstObjectByType<SemiconMarketTerminal>(FindObjectsInactive.Include);
-            var panel = FindFirstObjectByType<SemiconMarketPanel>();
-            if (state == null || player == null || cameraController == null || terminal == null || panel == null)
+            var panel = FindFirstObjectByType<SemiconMarketPanel>(FindObjectsInactive.Include);
+            if (state == null || player == null || cameraController == null || panel == null)
             {
                 Debug.LogError("[Semicon Market Smoke] 필수 마켓 구성요소를 찾지 못했습니다.");
                 Application.Quit(21);
@@ -530,7 +791,7 @@ namespace SemiconCity.Game
 
             state.ResetProgress();
             state.AddFinishedProducts(2);
-            terminal.Interact(player, cameraController);
+            panel.Open(player, cameraController);
             yield return new WaitForSecondsRealtime(0.35f);
 
             var buttonNames = new[]
@@ -538,8 +799,7 @@ namespace SemiconCity.Game
                 "Buy Silicon Button",
                 "Buy Process Gas Button",
                 "Buy Chemicals Button",
-                "Buy Metal Target Button",
-                "Sell Finished Button"
+                "Buy Metal Target Button"
             };
             foreach (var buttonName in buttonNames)
             {
@@ -555,6 +815,23 @@ namespace SemiconCity.Game
                 yield return new WaitForSecondsRealtime(0.08f);
             }
 
+            if (state.Credits != 25000 || state.SiliconStock != 0 || state.ProcessGasStock != 0 ||
+                state.ChemicalStock != 0 || state.MetalTargetStock != 0)
+            {
+                Debug.LogError("[Semicon Market Smoke] 장바구니 담기 전에 재고가 변경되었습니다.");
+                Application.Quit(23);
+                yield break;
+            }
+            if (!InvokeButton("Market Checkout Button"))
+            {
+                Application.Quit(22);
+                yield break;
+            }
+            yield return new WaitForSecondsRealtime(0.08f);
+            InvokeButton("Market Sales Tab Button");
+            InvokeButton("Sell Finished Button");
+            yield return new WaitForSecondsRealtime(0.08f);
+
             if (state.Credits != 22750 || state.SiliconStock != 10 || state.ProcessGasStock != 10 ||
                 state.ChemicalStock != 10 || state.MetalTargetStock != 10 || state.FinishedProductStock != 1)
             {
@@ -569,6 +846,47 @@ namespace SemiconCity.Game
                 $"semicon-market-smoke-{Screen.width}x{Screen.height}.png"));
             yield return CaptureScreen(outputPath);
             Debug.Log($"[Semicon Market Smoke] PASS / credits={state.Credits} / materials=10,10,10,10 / product=1 / Capture={outputPath}");
+            Application.Quit(0);
+        }
+
+        private IEnumerator RunProductionBatchSmokeTest()
+        {
+            yield return null;
+            var state = SemiconGameState.Instance;
+            var player = FindFirstObjectByType<SemiconPlayerController>();
+            var cameraController = FindFirstObjectByType<SemiconThirdPersonCamera>();
+            var panel = FindFirstObjectByType<SemiconProductionPanel>(FindObjectsInactive.Include);
+            if (state == null || player == null || cameraController == null || panel == null)
+            {
+                Debug.LogError("[Semicon Production Batch] Required component missing.");
+                Application.Quit(24);
+                yield break;
+            }
+
+            state.ResetProgress();
+            state.TryBuyMaterial(SemiconMaterialKind.Silicon, 20);
+            panel.Open(player, cameraController, 0);
+            yield return new WaitForSecondsRealtime(0.3f);
+            InvokeButton("Increase Production Cycle Button");
+            InvokeButton("Increase Production Cycle Button");
+            yield return null;
+            if (!InvokeButton("Produce SC-01 Button"))
+            {
+                Application.Quit(25);
+                yield break;
+            }
+            yield return null;
+            var job = state.GetProductionJob(0);
+            if (!job.HasJob || job.Batches != 3 || job.OutputAmount != state.GetProductionStats(0).OutputPerCycle * 3 ||
+                state.SiliconStock != 14)
+            {
+                Debug.LogError($"[Semicon Production Batch] mismatch / job={job.HasJob} / batches={job.Batches} / " +
+                               $"output={job.OutputAmount} / silicon={state.SiliconStock}");
+                Application.Quit(26);
+                yield break;
+            }
+            Debug.Log($"[Semicon Production Batch] PASS / batches={job.Batches} / output={job.OutputAmount} / " +
+                      $"seconds={job.TotalSeconds:0.0} / silicon={state.SiliconStock}");
             Application.Quit(0);
         }
 
@@ -621,6 +939,12 @@ namespace SemiconCity.Game
                 }
                 yield return new WaitForSecondsRealtime(0.05f);
             }
+            if (!InvokeButton("Market Checkout Button"))
+            {
+                Application.Quit(34);
+                yield break;
+            }
+            yield return new WaitForSecondsRealtime(0.05f);
             InvokeButton("Market Close Button");
             yield return new WaitForSecondsRealtime(0.22f);
             marketExit.Interact(player, cameraController);
@@ -682,6 +1006,7 @@ namespace SemiconCity.Game
             yield return new WaitForSecondsRealtime(0.12f);
             marketTerminal.Interact(player, cameraController);
             yield return new WaitForSecondsRealtime(0.3f);
+            InvokeButton("Market Sales Tab Button");
             if (!InvokeButton("Sell Finished Button"))
             {
                 Application.Quit(38);
@@ -707,18 +1032,189 @@ namespace SemiconCity.Game
             Application.Quit(0);
         }
 
+        private IEnumerator RunGachaSmokeTest()
+        {
+            yield return null;
+            var state = SemiconGameState.Instance;
+            var player = FindFirstObjectByType<SemiconPlayerController>();
+            var cameraController = FindFirstObjectByType<SemiconThirdPersonCamera>();
+            var panel = FindFirstObjectByType<SemiconGachaPanel>(FindObjectsInactive.Include);
+            if (state == null || player == null || cameraController == null || panel == null)
+            {
+                Debug.LogError("[Semicon Gacha Smoke] Required supply component is missing.");
+                Application.Quit(71);
+                yield break;
+            }
+
+            state.ResetProgress();
+            UnityEngine.Random.InitState(20260819);
+            panel.Open(player, cameraController);
+            yield return new WaitForSecondsRealtime(0.3f);
+            if (!InvokeButton("Robot Supply Tab Button") || !InvokeButton("Ten Supply Draw Button"))
+            {
+                Application.Quit(72);
+                yield break;
+            }
+            yield return new WaitForSecondsRealtime(1.65f);
+
+            var robotTotal = 0;
+            var rareRobotTotal = 0;
+            for (var index = 0; index < SemiconFactoryDefinitions.RobotCount; index++)
+            {
+                var robot = SemiconFactoryDefinitions.GetRobotByCatalogIndex(index);
+                var count = state.GetRobotBaseEquivalentCount(robot);
+                robotTotal += count;
+                if (SemiconFactoryDefinitions.GetRobot(robot).Rarity != SemiconRobotRarity.N) rareRobotTotal += count;
+            }
+            if (robotTotal != 11 || rareRobotTotal < 1 || state.Credits != 11500)
+            {
+                Debug.LogError($"[Semicon Gacha Smoke] Robot draw mismatch: total={robotTotal}, " +
+                               $"rare={rareRobotTotal}, credits={state.Credits}");
+                Application.Quit(73);
+                yield break;
+            }
+
+            var robotPath = Path.GetFullPath(Path.Combine(Application.dataPath, "..",
+                $"semicon-gacha-robot-result-{Screen.width}x{Screen.height}.png"));
+            yield return CaptureScreen(robotPath);
+            if (!InvokeButton("Supply Result Close Button") || !InvokeButton("Disk Supply Tab Button") ||
+                !InvokeButton("Ten Supply Draw Button"))
+            {
+                Application.Quit(74);
+                yield break;
+            }
+            yield return new WaitForSecondsRealtime(1.15f);
+
+            var diskTotal = 0;
+            var upgradedDiskTotal = 0;
+            for (var kind = 1; kind <= 3; kind++)
+            for (var grade = 1; grade <= 3; grade++)
+            {
+                var count = state.GetDiskOwnedCount((SemiconDiskKind)kind, (SemiconDiskGrade)grade);
+                diskTotal += count;
+                if (grade >= 2) upgradedDiskTotal += count;
+            }
+            if (diskTotal != 11 || upgradedDiskTotal < 1 || state.Credits != 5200)
+            {
+                Debug.LogError($"[Semicon Gacha Smoke] Disk draw mismatch: total={diskTotal}, " +
+                               $"grade2plus={upgradedDiskTotal}, credits={state.Credits}");
+                Application.Quit(75);
+                yield break;
+            }
+
+            var diskPath = Path.GetFullPath(Path.Combine(Application.dataPath, "..",
+                $"semicon-gacha-disk-result-{Screen.width}x{Screen.height}.png"));
+            yield return CaptureScreen(diskPath);
+            state.ResetProgress();
+            if (!state.TryAssignRobot(0, SemiconRobotKind.Bolt01, out var reason) ||
+                !state.TryAssignDisk(0, SemiconDiskKind.Production, SemiconDiskGrade.I, out reason))
+            {
+                Debug.LogError("[Semicon Gacha Smoke] Starter assignment failed: " + reason);
+                Application.Quit(76);
+                yield break;
+            }
+            var slot = state.GetFactorySlot(0);
+            var stats = state.GetProductionStats(0);
+            if (slot.robot != SemiconRobotKind.Bolt01 || slot.disk != SemiconDiskKind.Production ||
+                slot.diskGrade != SemiconDiskGrade.I || stats.Production != 114)
+            {
+                Debug.LogError($"[Semicon Gacha Smoke] Assignment stats mismatch: " +
+                               $"{slot.robot}/{slot.disk}/{slot.diskGrade}, production={stats.Production}");
+                Application.Quit(77);
+                yield break;
+            }
+
+            Debug.Log($"[Semicon Gacha Smoke] PASS / robots=15 kinds, owned={robotTotal}, R+ guarantee={rareRobotTotal} / " +
+                      $"disks=3x3, owned={diskTotal}, II+ guarantee={upgradedDiskTotal} / auto merge verified / " +
+                      $"RobotResult={robotPath} / DiskResult={diskPath}");
+            state.ResetProgress();
+            Application.Quit(0);
+        }
+
+        private IEnumerator RunRobotCrewAndEnhancementSmokeTest()
+        {
+            yield return null;
+            var state = SemiconGameState.Instance;
+            var player = FindFirstObjectByType<SemiconPlayerController>();
+            var cameraController = FindFirstObjectByType<SemiconThirdPersonCamera>();
+            var panel = FindFirstObjectByType<SemiconFactoryLoadoutPanel>(FindObjectsInactive.Include);
+            if (state == null || player == null || cameraController == null || panel == null)
+            {
+                Debug.LogError("[Semicon Robot Crew Smoke] Required component is missing.");
+                Application.Quit(78);
+                yield break;
+            }
+
+            state.ResetProgress();
+            state.GrantRobotCopiesForSmokeTest(SemiconRobotKind.Bolt01, 8);
+            state.GrantRobotCopiesForSmokeTest(SemiconRobotKind.Pico05, 243);
+            state.GrantGachaRewardForSmokeTest(SemiconRobotKind.Swift02, SemiconDiskKind.Speed,
+                SemiconDiskGrade.II);
+            state.GrantGachaRewardForSmokeTest(SemiconRobotKind.Gauge03, SemiconDiskKind.Quality,
+                SemiconDiskGrade.III);
+
+            if (state.GetRobotOwnedCount(SemiconRobotKind.Bolt01, 2) != 1 ||
+                state.GetRobotBaseEquivalentCount(SemiconRobotKind.Bolt01) != 9 ||
+                state.GetRobotOwnedCount(SemiconRobotKind.Pico05, 5) != 1 ||
+                state.GetRobotBaseEquivalentCount(SemiconRobotKind.Pico05) != 243)
+            {
+                Debug.LogError($"[Semicon Robot Crew Smoke] Merge mismatch: " +
+                    $"BOLT +2={state.GetRobotOwnedCount(SemiconRobotKind.Bolt01, 2)}, " +
+                    $"PICO +5={state.GetRobotOwnedCount(SemiconRobotKind.Pico05, 5)}");
+                Application.Quit(79);
+                yield break;
+            }
+
+            if (!state.TryAssignRobot(0, 0, SemiconRobotKind.Bolt01, 2, out var reason) ||
+                !state.TryAssignRobot(0, 1, SemiconRobotKind.Swift02, 0, out reason) ||
+                !state.TryAssignRobot(0, 2, SemiconRobotKind.Gauge03, 0, out reason) ||
+                !state.TryAssignDisk(0, 0, SemiconDiskKind.Production, SemiconDiskGrade.I, out reason) ||
+                !state.TryAssignDisk(0, 1, SemiconDiskKind.Speed, SemiconDiskGrade.II, out reason) ||
+                !state.TryAssignDisk(0, 2, SemiconDiskKind.Quality, SemiconDiskGrade.III, out reason))
+            {
+                Debug.LogError("[Semicon Robot Crew Smoke] Three-unit assignment failed: " + reason);
+                Application.Quit(80);
+                yield break;
+            }
+            if (state.TryAssignRobot(0, 3, SemiconRobotKind.Pico05, 5, out _))
+            {
+                Debug.LogError("[Semicon Robot Crew Smoke] A fourth robot bay was accepted unexpectedly.");
+                Application.Quit(81);
+                yield break;
+            }
+
+            var slot = state.GetFactorySlot(0);
+            var stats = state.GetProductionStats(0);
+            if (slot.robots[0] != SemiconRobotKind.Bolt01 || slot.robotEnhancements[0] != 2 ||
+                slot.robots[1] != SemiconRobotKind.Swift02 || slot.robots[2] != SemiconRobotKind.Gauge03 ||
+                stats.Production != 121 || stats.Speed != 125 || stats.Quality != 113 || stats.OutputPerCycle != 2)
+            {
+                Debug.LogError($"[Semicon Robot Crew Smoke] Crew stats mismatch: " +
+                    $"production={stats.Production}, speed={stats.Speed}, quality={stats.Quality}, " +
+                    $"output={stats.OutputPerCycle}");
+                Application.Quit(82);
+                yield break;
+            }
+
+            panel.Open(0, player, cameraController);
+            yield return new WaitForSecondsRealtime(0.35f);
+            var capturePath = Path.GetFullPath(Path.Combine(Application.dataPath, "..",
+                $"semicon-robot-crew-{Screen.width}x{Screen.height}.png"));
+            yield return CaptureScreen(capturePath);
+            Debug.Log($"[Semicon Robot Crew Smoke] PASS / 3 robot bays / BOLT +2 / PICO +5 / " +
+                      $"stats=121,125,113 / output=2 / Capture={capturePath}");
+            state.ResetProgress();
+            Application.Quit(0);
+        }
+
         private IEnumerator RunFactoryLoadoutSmokeTest()
         {
             yield return null;
             var state = SemiconGameState.Instance;
             var player = FindFirstObjectByType<SemiconPlayerController>();
             var cameraController = FindFirstObjectByType<SemiconThirdPersonCamera>();
-            var loadoutPanel = FindFirstObjectByType<SemiconFactoryLoadoutPanel>(FindObjectsInactive.Include);
             var factoryEntrance = FindPortal("Factory Visitor Entrance");
-            var slotTerminal = FindObjectsByType<SemiconFactorySlotTerminal>(FindObjectsInactive.Include,
-                FindObjectsSortMode.None).FirstOrDefault(item => item.name.Contains("01"));
-            if (state == null || player == null || cameraController == null || loadoutPanel == null ||
-                factoryEntrance == null || slotTerminal == null)
+            if (state == null || player == null || cameraController == null || factoryEntrance == null)
             {
                 Debug.LogError("[Semicon Loadout Smoke] Required factory loadout component is missing.");
                 Application.Quit(41);
@@ -726,18 +1222,35 @@ namespace SemiconCity.Game
             }
 
             state.ResetProgress();
+            state.GrantGachaRewardForSmokeTest(SemiconRobotKind.Forge06, SemiconDiskKind.Speed,
+                SemiconDiskGrade.II);
             state.TryBuyMaterial(SemiconMaterialKind.Silicon, 10);
             state.TryBuyMaterial(SemiconMaterialKind.ProcessGas, 10);
             state.TryBuyMaterial(SemiconMaterialKind.Chemicals, 10);
             state.RecordPhotoExperiment(90, -0.15f, 90f, 92f, true);
             factoryEntrance.Interact(player, cameraController);
-            yield return new WaitForSecondsRealtime(0.2f);
+            yield return new WaitForSecondsRealtime(0.35f);
+
+            player = FindFirstObjectByType<SemiconPlayerController>();
+            cameraController = FindFirstObjectByType<SemiconThirdPersonCamera>();
+            var loadoutPanel = FindFirstObjectByType<SemiconFactoryLoadoutPanel>(FindObjectsInactive.Include);
+            var slotTerminal = FindObjectsByType<SemiconFactorySlotTerminal>(FindObjectsInactive.Include,
+                FindObjectsSortMode.None).FirstOrDefault();
+            if (player == null || cameraController == null || loadoutPanel == null || slotTerminal == null)
+            {
+                Debug.LogError($"[Semicon Loadout Smoke] Factory interior component missing after scene transition: " +
+                               $"player={player != null}, camera={cameraController != null}, " +
+                               $"panel={loadoutPanel != null}, terminal={slotTerminal != null}.");
+                Application.Quit(41);
+                yield break;
+            }
 
             slotTerminal.Interact(player, cameraController);
             yield return new WaitForSecondsRealtime(0.3f);
-            if (!InvokeButton("Assign Mina Button") || !InvokeButton("Assign Production Disk Button") ||
+            if (!InvokeButton("Assign Selected Robot Button") || !InvokeButton("Assign Selected Disk Button") ||
                 !InvokeButton("Factory Slot 02 Button") || !InvokeButton("Install Factory Machine Button") ||
-                !InvokeButton("Assign Rex Button") || !InvokeButton("Assign Speed Disk Button") ||
+                !InvokeButton("Next Robot Button") || !InvokeButton("Assign Selected Robot Button") ||
+                !InvokeButton("Next Disk Button") || !InvokeButton("Assign Selected Disk Button") ||
                 !InvokeButton("Factory Slot 01 Button"))
             {
                 Application.Quit(42);
@@ -748,13 +1261,14 @@ namespace SemiconCity.Game
             var slot0 = state.GetFactorySlot(0);
             var slot1 = state.GetFactorySlot(1);
             var stats = state.GetProductionStats(0);
-            if (slot0.worker != SemiconWorkerKind.Mina || slot0.disk != SemiconDiskKind.Production ||
-                slot1 == null || !slot1.machineInstalled || slot1.worker != SemiconWorkerKind.Rex ||
-                slot1.disk != SemiconDiskKind.Speed || stats.Production != 122 || stats.OutputPerCycle != 2 ||
-                state.Credits != 17450)
+            if (slot0.robot != SemiconRobotKind.Bolt01 || slot0.disk != SemiconDiskKind.Production ||
+                slot0.diskGrade != SemiconDiskGrade.I || slot1 == null || !slot1.machineInstalled ||
+                slot1.robot != SemiconRobotKind.Forge06 || slot1.disk != SemiconDiskKind.Speed ||
+                slot1.diskGrade != SemiconDiskGrade.II || stats.Production != 114 || stats.OutputPerCycle != 1)
             {
                 Debug.LogError($"[Semicon Loadout Smoke] Assignment mismatch: credits={state.Credits}, " +
-                    $"slot0={slot0?.worker}/{slot0?.disk}, slot1={slot1?.machineInstalled}/{slot1?.worker}/{slot1?.disk}, " +
+                    $"slot0={slot0?.robot}/{slot0?.disk}/{slot0?.diskGrade}, " +
+                    $"slot1={slot1?.machineInstalled}/{slot1?.robot}/{slot1?.disk}/{slot1?.diskGrade}, " +
                     $"production={stats.Production}, output={stats.OutputPerCycle}");
                 Application.Quit(43);
                 yield break;
@@ -788,8 +1302,8 @@ namespace SemiconCity.Game
 
             var enhancedJob = state.GetProductionJob(0);
             yield return new WaitForSecondsRealtime(enhancedJob.RemainingSeconds + 0.25f);
-            if (!InvokeButton("Collect Production Button") || state.WaferStock != 2 ||
-                state.AverageWaferQuality != 92 ||
+            if (!InvokeButton("Collect Production Button") || state.WaferStock != 1 ||
+                state.AverageWaferQuality != 82 ||
                 state.GetProductionJob(0).HasJob)
             {
                 Debug.LogError($"[Semicon Loadout Smoke] Enhanced production collect mismatch: " +
@@ -802,8 +1316,8 @@ namespace SemiconCity.Game
             var productionPath = Path.GetFullPath(Path.Combine(Application.dataPath, "..",
                 $"semicon-loadout-production-{Screen.width}x{Screen.height}.png"));
             yield return CaptureScreen(productionPath);
-            Debug.Log($"[Semicon Loadout Smoke] PASS / 2 machines / unique assignments / wafer output=2 / " +
-                $"quality=92 / Loadout={loadoutPath} / Production={productionPath}");
+            Debug.Log($"[Semicon Loadout Smoke] PASS / 2 machines / owned robot+disk assignments / wafer output=1 / " +
+                $"quality=82 / Loadout={loadoutPath} / Production={productionPath}");
             Application.Quit(0);
         }
 
@@ -909,11 +1423,11 @@ namespace SemiconCity.Game
             }
             yield return new WaitForSecondsRealtime(1.15f);
             if (!state.OxidationRecipeQualified || state.OxidationExperimentCount != 1 ||
-                state.ResearchPoints != 112 || Mathf.Abs(state.BestOxideThickness - 100f) > 0.1f ||
+                state.Credits != 24200 || Mathf.Abs(state.BestOxideThickness - 100f) > 0.1f ||
                 Mathf.Abs(state.BestOxideUniformity - 98f) > 0.1f)
             {
                 Debug.LogError($"[Semicon Oxidation Smoke] Experiment mismatch: qualified={state.OxidationRecipeQualified}, " +
-                    $"count={state.OxidationExperimentCount}, research={state.ResearchPoints}, " +
+                    $"count={state.OxidationExperimentCount}, credits={state.Credits}, " +
                     $"thickness={state.BestOxideThickness:0.0}, uniformity={state.BestOxideUniformity:0.0}");
                 Application.Quit(63);
                 yield break;
@@ -1002,6 +1516,152 @@ namespace SemiconCity.Game
             Application.Quit(0);
         }
 
+        private IEnumerator RunPhotoUiSmokeTest()
+        {
+            yield return null;
+            var state = SemiconGameState.Instance;
+            var player = FindFirstObjectByType<SemiconPlayerController>();
+            var cameraController = FindFirstObjectByType<SemiconThirdPersonCamera>();
+            var photoPanel = FindFirstObjectByType<PhotoExperimentPanel>(FindObjectsInactive.Include);
+            if (state == null || player == null || cameraController == null || photoPanel == null)
+            {
+                Debug.LogError("[Semicon Photo UI Smoke] Required UI component is missing.");
+                Application.Quit(71);
+                yield break;
+            }
+
+            state.ResetProgress();
+            photoPanel.Open(player, cameraController);
+            yield return new WaitForSecondsRealtime(0.3f);
+            var doseSliderObject = GameObject.Find("Dose Slider");
+            var focusSliderObject = GameObject.Find("Focus Slider");
+            var doseSlider = doseSliderObject != null ? doseSliderObject.GetComponent<Slider>() : null;
+            var focusSlider = focusSliderObject != null ? focusSliderObject.GetComponent<Slider>() : null;
+            if (doseSlider == null || focusSlider == null)
+            {
+                Debug.LogError("[Semicon Photo UI Smoke] Experiment sliders are missing.");
+                Application.Quit(72);
+                yield break;
+            }
+
+            doseSlider.value = 105f;
+            focusSlider.value = 0.05f;
+            yield return null;
+            if (!AuditPhotoTypography(photoPanel, "Ready"))
+            {
+                Application.Quit(82);
+                yield break;
+            }
+            var readyPath = Path.GetFullPath(Path.Combine(Application.dataPath, "..",
+                $"semicon-photo-ui-ready-{Screen.width}x{Screen.height}.png"));
+            yield return CaptureScreen(readyPath);
+            if (!InvokeButton("Run Experiment Button"))
+            {
+                Debug.LogError("[Semicon Photo UI Smoke] Run button is missing.");
+                Application.Quit(72);
+                yield break;
+            }
+
+            yield return new WaitForSecondsRealtime(0.9f);
+            if (!photoPanel.IsRunning ||
+                photoPanel.CurrentPresentationState != PhotoExperimentPanel.PresentationState.Processing)
+            {
+                Debug.LogError($"[Semicon Photo UI Smoke] Processing mismatch: " +
+                    $"running={photoPanel.IsRunning}, state={photoPanel.CurrentPresentationState}");
+                Application.Quit(73);
+                yield break;
+            }
+            if (!AuditPhotoTypography(photoPanel, "Processing"))
+            {
+                Application.Quit(83);
+                yield break;
+            }
+            var processingPath = Path.GetFullPath(Path.Combine(Application.dataPath, "..",
+                $"semicon-photo-ui-processing-{Screen.width}x{Screen.height}.png"));
+            yield return CaptureScreen(processingPath);
+
+            yield return new WaitForSecondsRealtime(2.45f);
+            if (photoPanel.IsRunning ||
+                photoPanel.CurrentPresentationState != PhotoExperimentPanel.PresentationState.Result)
+            {
+                Debug.LogError($"[Semicon Photo UI Smoke] Result mismatch: " +
+                    $"running={photoPanel.IsRunning}, state={photoPanel.CurrentPresentationState}");
+                Application.Quit(73);
+                yield break;
+            }
+            if (!AuditPhotoTypography(photoPanel, "Result"))
+            {
+                Application.Quit(84);
+                yield break;
+            }
+            var resultPath = Path.GetFullPath(Path.Combine(Application.dataPath, "..",
+                $"semicon-photo-experiment-{Screen.width}x{Screen.height}.png"));
+            yield return CaptureScreen(resultPath);
+
+            Debug.Log($"[Semicon Photo UI Smoke] PASS / Ready={readyPath} / Processing={processingPath} / Result={resultPath}");
+            state.ResetProgress();
+            Application.Quit(0);
+        }
+
+        private static bool AuditPhotoTypography(PhotoExperimentPanel panel, string presentation)
+        {
+            var issues = new List<string>();
+            var labels = panel.GetComponentsInChildren<SemiconSdfText>(false)
+                .Where(label => label != null && label.gameObject.activeInHierarchy &&
+                                !string.IsNullOrWhiteSpace(label.text)).ToArray();
+            foreach (var label in labels)
+            {
+                label.ForceMeshUpdate();
+                if (label.isTextOverflowing)
+                {
+                    issues.Add($"overflow:{label.name}=\"{label.text.Replace("\n", " / ")}\"");
+                }
+            }
+
+            for (var firstIndex = 0; firstIndex < labels.Length; firstIndex++)
+            {
+                for (var secondIndex = firstIndex + 1; secondIndex < labels.Length; secondIndex++)
+                {
+                    var first = labels[firstIndex];
+                    var second = labels[secondIndex];
+                    if (first.transform.parent != second.transform.parent)
+                    {
+                        continue;
+                    }
+
+                    var firstRect = GetRenderedTextRect(first);
+                    var secondRect = GetRenderedTextRect(second);
+                    var overlapWidth = Mathf.Min(firstRect.xMax, secondRect.xMax) -
+                                       Mathf.Max(firstRect.xMin, secondRect.xMin);
+                    var overlapHeight = Mathf.Min(firstRect.yMax, secondRect.yMax) -
+                                        Mathf.Max(firstRect.yMin, secondRect.yMin);
+                    if (overlapWidth > 1.5f && overlapHeight > 1.5f)
+                    {
+                        issues.Add($"overlap:{first.transform.parent.name}/{first.name}+{second.name} " +
+                                   $"({overlapWidth:0.0}x{overlapHeight:0.0})");
+                    }
+                }
+            }
+
+            if (issues.Count == 0)
+            {
+                Debug.Log($"[Semicon Photo Typography] PASS / {presentation} / labels={labels.Length}");
+                return true;
+            }
+
+            Debug.LogError($"[Semicon Photo Typography] FAIL / {presentation} / {string.Join(" | ", issues)}");
+            return false;
+        }
+
+        private static Rect GetRenderedTextRect(TMP_Text label)
+        {
+            var bounds = label.textBounds;
+            var first = label.transform.TransformPoint(bounds.min);
+            var second = label.transform.TransformPoint(bounds.max);
+            return Rect.MinMaxRect(Mathf.Min(first.x, second.x), Mathf.Min(first.y, second.y),
+                Mathf.Max(first.x, second.x), Mathf.Max(first.y, second.y));
+        }
+
         private IEnumerator RunPhotoProductionSmokeTest()
         {
             yield return null;
@@ -1057,11 +1717,11 @@ namespace SemiconCity.Game
                 $"semicon-photo-ui-processing-{Screen.width}x{Screen.height}.png"));
             yield return CaptureScreen(experimentProcessingPath);
             yield return new WaitForSecondsRealtime(2.45f);
-            if (!state.PhotoRecipeQualified || state.ExperimentCount != 1 || state.ResearchPoints != 112 ||
+            if (!state.PhotoRecipeQualified || state.ExperimentCount != 1 || state.Credits != 24200 ||
                 Mathf.Abs(state.BestYield - 97f) > 0.1f || Mathf.Abs(state.BestPrecision - 98f) > 0.1f)
             {
                 Debug.LogError($"[Semicon Photo Smoke] Experiment mismatch: qualified={state.PhotoRecipeQualified}, " +
-                    $"count={state.ExperimentCount}, research={state.ResearchPoints}, " +
+                    $"count={state.ExperimentCount}, credits={state.Credits}, " +
                     $"yield={state.BestYield:0.0}, precision={state.BestPrecision:0.0}");
                 Application.Quit(73);
                 yield break;
@@ -1201,11 +1861,11 @@ namespace SemiconCity.Game
                 yield break;
             }
             yield return new WaitForSecondsRealtime(1.15f);
-            if (!state.EtchRecipeQualified || state.EtchExperimentCount != 1 || state.ResearchPoints != 112 ||
+            if (!state.EtchRecipeQualified || state.EtchExperimentCount != 1 || state.Credits != 24200 ||
                 Mathf.Abs(state.BestEtchDepth - 120f) > 0.1f || Mathf.Abs(state.BestEtchProfile - 98f) > 0.1f)
             {
                 Debug.LogError($"[Semicon Etch Smoke] Experiment mismatch: qualified={state.EtchRecipeQualified}, " +
-                    $"count={state.EtchExperimentCount}, research={state.ResearchPoints}, " +
+                    $"count={state.EtchExperimentCount}, credits={state.Credits}, " +
                     $"depth={state.BestEtchDepth:0.0}, profile={state.BestEtchProfile:0.0}");
                 Application.Quit(83);
                 yield break;
@@ -1356,13 +2016,13 @@ namespace SemiconCity.Game
             }
             yield return new WaitForSecondsRealtime(1.15f);
             if (!state.DepositionRecipeQualified || state.DepositionExperimentCount != 1 ||
-                state.ResearchPoints != 112 || Mathf.Abs(state.BestDepositionThickness - 80f) > 0.1f ||
+                state.Credits != 24200 || Mathf.Abs(state.BestDepositionThickness - 80f) > 0.1f ||
                 Mathf.Abs(state.BestDepositionUniformity - 98f) > 0.1f ||
                 Mathf.Abs(state.BestDepositionCoverage - 95f) > 0.1f)
             {
                 Debug.LogError($"[Semicon Deposition Smoke] Experiment mismatch: " +
                     $"qualified={state.DepositionRecipeQualified}, count={state.DepositionExperimentCount}, " +
-                    $"research={state.ResearchPoints}, thickness={state.BestDepositionThickness:0.0}, " +
+                    $"credits={state.Credits}, thickness={state.BestDepositionThickness:0.0}, " +
                     $"uniformity={state.BestDepositionUniformity:0.0}, coverage={state.BestDepositionCoverage:0.0}");
                 Application.Quit(93);
                 yield break;
@@ -1525,13 +2185,13 @@ namespace SemiconCity.Game
                 yield break;
             }
             yield return new WaitForSecondsRealtime(1.15f);
-            if (!state.MetalRecipeQualified || state.MetalExperimentCount != 1 || state.ResearchPoints != 112 ||
+            if (!state.MetalRecipeQualified || state.MetalExperimentCount != 1 || state.Credits != 24200 ||
                 Mathf.Abs(state.BestMetalThickness - 450f) > 0.1f ||
                 Mathf.Abs(state.BestMetalResistance - 0.119f) > 0.001f ||
                 Mathf.Abs(state.BestMetalAdhesion - 98f) > 0.1f)
             {
                 Debug.LogError($"[Semicon Metal Smoke] Experiment mismatch: qualified={state.MetalRecipeQualified}, " +
-                    $"count={state.MetalExperimentCount}, research={state.ResearchPoints}, " +
+                    $"count={state.MetalExperimentCount}, credits={state.Credits}, " +
                     $"thickness={state.BestMetalThickness:0.0}, resistance={state.BestMetalResistance:0.000}, " +
                     $"adhesion={state.BestMetalAdhesion:0.0}");
                 Application.Quit(103);
@@ -1672,13 +2332,13 @@ namespace SemiconCity.Game
                 yield break;
             }
             yield return new WaitForSecondsRealtime(1.15f);
-            if (!state.EdsRecipeQualified || state.EdsExperimentCount != 1 || state.ResearchPoints != 112 ||
+            if (!state.EdsRecipeQualified || state.EdsExperimentCount != 1 || state.Credits != 24200 ||
                 Mathf.Abs(state.BestEdsYield - 96f) > 0.1f ||
                 Mathf.Abs(state.BestEdsDetection - 98f) > 0.1f ||
                 Mathf.Abs(state.BestEdsFalseReject - 2f) > 0.1f)
             {
                 Debug.LogError($"[Semicon EDS Smoke] Experiment mismatch: qualified={state.EdsRecipeQualified}, " +
-                    $"count={state.EdsExperimentCount}, research={state.ResearchPoints}, " +
+                    $"count={state.EdsExperimentCount}, credits={state.Credits}, " +
                     $"yield={state.BestEdsYield:0.0}, detection={state.BestEdsDetection:0.0}, " +
                     $"falseReject={state.BestEdsFalseReject:0.0}");
                 Application.Quit(113);
@@ -1822,13 +2482,13 @@ namespace SemiconCity.Game
             }
             yield return new WaitForSecondsRealtime(1.2f);
             if (!state.PackageRecipeQualified || state.PackageExperimentCount != 1 ||
-                state.ResearchPoints != 112 || Mathf.Abs(state.BestPackageBondStrength - 96f) > 0.1f ||
+                state.Credits != 24200 || Mathf.Abs(state.BestPackageBondStrength - 96f) > 0.1f ||
                 Mathf.Abs(state.BestPackageIntegrity - 97f) > 0.1f ||
                 Mathf.Abs(state.BestPackageFinalPass - 97f) > 0.1f)
             {
                 Debug.LogError($"[Semicon Package Smoke] Experiment mismatch: " +
                     $"qualified={state.PackageRecipeQualified}, count={state.PackageExperimentCount}, " +
-                    $"research={state.ResearchPoints}, strength={state.BestPackageBondStrength:0.0}, " +
+                    $"credits={state.Credits}, strength={state.BestPackageBondStrength:0.0}, " +
                     $"integrity={state.BestPackageIntegrity:0.0}, final={state.BestPackageFinalPass:0.0}");
                 Application.Quit(123);
                 yield break;

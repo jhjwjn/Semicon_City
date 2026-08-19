@@ -18,6 +18,10 @@ namespace SemiconCity.Game
         private static readonly Color32 PatternColor = new Color32(50, 220, 231, 238);
         private static readonly Color32 ScanColor = new Color32(222, 253, 255, 255);
         private static readonly Color32 CompleteColor = new Color32(45, 204, 157, 255);
+        private static readonly Color32 StageShadow = new Color32(4, 25, 39, 80);
+        private static readonly Color32 StageOuter = new Color32(20, 54, 72, 238);
+        private static readonly Color32 StageMetal = new Color32(126, 166, 184, 235);
+        private static readonly Color32 StageInner = new Color32(8, 34, 53, 248);
 
         public float PatternReveal
         {
@@ -74,9 +78,20 @@ namespace SemiconCity.Game
                 return;
             }
 
-            var center = rect.center;
-            var radiusX = rect.width * 0.475f;
-            var radiusY = rect.height * 0.425f;
+            var center = rect.center + new Vector2(0f, -4f);
+            var stageRadiusX = rect.width * 0.485f;
+            var stageRadiusY = rect.height * 0.42f;
+            AddExposureBeam(vertexHelper, center, stageRadiusX, stageRadiusY);
+            AddSolidEllipse(vertexHelper, center + new Vector2(0f, -12f), stageRadiusX, stageRadiusY, StageShadow);
+            AddSolidEllipse(vertexHelper, center, stageRadiusX, stageRadiusY, StageOuter);
+            AddRing(vertexHelper, center, stageRadiusX * 0.965f, stageRadiusY * 0.96f, StageMetal, 12f);
+            AddRing(vertexHelper, center, stageRadiusX * 0.91f, stageRadiusY * 0.885f,
+                new Color32(206, 232, 239, 220), 3f);
+            AddSolidEllipse(vertexHelper, center, stageRadiusX * 0.86f, stageRadiusY * 0.81f, StageInner);
+            AddEquipmentDetails(vertexHelper, center, stageRadiusX, stageRadiusY);
+
+            var radiusX = rect.width * 0.39f;
+            var radiusY = rect.height * 0.305f;
             AddEllipse(vertexHelper, center, radiusX, radiusY);
             AddRing(vertexHelper, center, radiusX * 0.955f, radiusY * 0.955f,
                 new Color32(226, 249, 255, 108), 1.5f);
@@ -91,6 +106,58 @@ namespace SemiconCity.Game
             if (showScan)
             {
                 AddScanLine(vertexHelper, center, radiusX, radiusY);
+            }
+        }
+
+        private void AddExposureBeam(VertexHelper vertexHelper, Vector2 center, float radiusX, float radiusY)
+        {
+            var source = center + new Vector2(0f, radiusY * 1.22f);
+            AddTriangle(vertexHelper, source, center + new Vector2(-radiusX * 0.54f, radiusY * 0.16f),
+                center + new Vector2(radiusX * 0.54f, radiusY * 0.16f), new Color32(83, 214, 229, 24));
+            AddLine(vertexHelper, source, center + new Vector2(-radiusX * 0.54f, radiusY * 0.16f),
+                2f, new Color32(66, 183, 211, 74));
+            AddLine(vertexHelper, source, center + new Vector2(radiusX * 0.54f, radiusY * 0.16f),
+                2f, new Color32(66, 183, 211, 74));
+        }
+
+        private void AddEquipmentDetails(VertexHelper vertexHelper, Vector2 center, float radiusX, float radiusY)
+        {
+            var tickColor = new Color32(111, 199, 218, 186);
+            for (var index = 0; index < 12; index++)
+            {
+                var angle = index * Mathf.PI * 2f / 12f;
+                var direction = new Vector2(Mathf.Cos(angle), Mathf.Sin(angle));
+                var tangent = new Vector2(-direction.y, direction.x);
+                var start = center + new Vector2(direction.x * radiusX * 0.9f, direction.y * radiusY * 0.9f);
+                var end = center + new Vector2(direction.x * radiusX * 0.96f, direction.y * radiusY * 0.96f);
+                AddLine(vertexHelper, start - tangent * 4f, end + tangent * 4f, 2f, tickColor);
+            }
+
+            var slotColor = new Color32(201, 229, 237, 180);
+            AddQuad(vertexHelper, center + new Vector2(-radiusX * 0.88f, -6f),
+                center + new Vector2(-radiusX * 0.73f, 6f), slotColor);
+            AddQuad(vertexHelper, center + new Vector2(radiusX * 0.73f, -6f),
+                center + new Vector2(radiusX * 0.88f, 6f), slotColor);
+            AddLine(vertexHelper, center + new Vector2(-radiusX * 0.62f, -radiusY * 0.7f),
+                center + new Vector2(radiusX * 0.62f, -radiusY * 0.7f), 2f, new Color32(69, 139, 170, 130));
+        }
+
+        private void AddSolidEllipse(VertexHelper vertexHelper, Vector2 center, float radiusX, float radiusY,
+            Color colorValue)
+        {
+            const int segments = 128;
+            var centerIndex = vertexHelper.currentVertCount;
+            vertexHelper.AddVert(center, Tint(colorValue), new Vector2(0.5f, 0.5f));
+            for (var index = 0; index <= segments; index++)
+            {
+                var angle = index * Mathf.PI * 2f / segments;
+                var point = center + new Vector2(Mathf.Cos(angle) * radiusX, Mathf.Sin(angle) * radiusY);
+                vertexHelper.AddVert(point, Tint(colorValue), new Vector2((Mathf.Cos(angle) + 1f) * 0.5f,
+                    (Mathf.Sin(angle) + 1f) * 0.5f));
+            }
+            for (var index = 0; index < segments; index++)
+            {
+                vertexHelper.AddTriangle(centerIndex, centerIndex + index + 1, centerIndex + index + 2);
             }
         }
 
@@ -321,6 +388,17 @@ namespace SemiconCity.Game
             vertexHelper.AddVert(new Vector2(max.x, min.y), tinted, Vector2.right);
             vertexHelper.AddTriangle(baseIndex, baseIndex + 1, baseIndex + 2);
             vertexHelper.AddTriangle(baseIndex, baseIndex + 2, baseIndex + 3);
+        }
+
+        private void AddTriangle(VertexHelper vertexHelper, Vector2 first, Vector2 second, Vector2 third,
+            Color colorValue)
+        {
+            var baseIndex = vertexHelper.currentVertCount;
+            var tinted = Tint(colorValue);
+            vertexHelper.AddVert(first, tinted, Vector2.up);
+            vertexHelper.AddVert(second, tinted, Vector2.zero);
+            vertexHelper.AddVert(third, tinted, Vector2.right);
+            vertexHelper.AddTriangle(baseIndex, baseIndex + 1, baseIndex + 2);
         }
 
         private Color Tint(Color source)

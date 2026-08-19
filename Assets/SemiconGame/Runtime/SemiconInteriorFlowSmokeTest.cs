@@ -9,12 +9,21 @@ namespace SemiconCity.Game
 {
     public sealed class SemiconInteriorFlowSmokeTest : MonoBehaviour
     {
+        private static bool isRunning;
+
         private IEnumerator Start()
         {
             if (!Environment.GetCommandLineArgs().Contains("--semicon-interior-flow-smoke-test"))
             {
                 yield break;
             }
+
+            if (isRunning)
+            {
+                Destroy(gameObject);
+                yield break;
+            }
+            isRunning = true;
 
             transform.SetParent(null);
             DontDestroyOnLoad(gameObject);

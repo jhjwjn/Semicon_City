@@ -101,7 +101,11 @@ namespace SemiconCity.Game
             {
                 lastUnlockedProcess = state.UnlockedProcessCount;
                 if (state.UnlockedProcessCount <= 8)
-                    hud?.ShowToast($"{state.UnlockedProcessCount:00} {GetProcessName(state.UnlockedProcessCount)} 공정 개방", 3.5f);
+                {
+                    var reward = SemiconGameState.GetProcessRobotReward(state.UnlockedProcessCount);
+                    hud?.ShowToast($"{state.UnlockedProcessCount:00} {GetProcessName(state.UnlockedProcessCount)} 공정 개방  ·  " +
+                                   $"{SemiconFactoryDefinitions.GetRobot(reward).Name} 로봇 지급", 4f);
+                }
             }
             RefreshObjective();
         }
@@ -186,8 +190,7 @@ namespace SemiconCity.Game
             if (state.WaferStock > 0)
             {
                 if (state.CompleteFirstTutorial())
-                    hud.ShowToast($"첫 생산 임무 완료  ·  ₩{SemiconGameState.FirstTutorialCreditReward:N0}  ·  " +
-                                  $"연구 데이터 +{SemiconGameState.FirstTutorialResearchReward}", 4f);
+                    hud.ShowToast($"첫 생산 임무 완료  ·  ₩{SemiconGameState.FirstTutorialCreditReward:N0}", 4f);
                 return;
             }
 
@@ -223,7 +226,7 @@ namespace SemiconCity.Game
             {
                 SetObjective($"EXPERIMENT_{process:00}", $"PROCESS {process:00}  /  08",
                     $"{GetProcessName(process)} 실험으로 {GetRecipeCode(recipe)} 개방",
-                    $"두 핵심 변수를 조절해 품질 목표를 달성하세요.  실험 비용: 연구 데이터 8",
+                    $"두 핵심 변수를 조절해 품질 목표를 달성하세요.  실험 비용: ₩{SemiconGameState.ExperimentCreditCost:N0}",
                     GetExperimentTarget(process));
                 return;
             }
@@ -236,7 +239,7 @@ namespace SemiconCity.Game
             if (!state.PackageRecipeQualified)
             {
                 SetObjective("EXPERIMENT_08", "PROCESS 08  /  08", "패키징 실험으로 PACKAGE-01 개방",
-                    "본딩 압력과 몰딩 온도를 조절해 최종 합격 목표를 달성하세요.  실험 비용: 연구 데이터 8",
+                    $"본딩 압력과 몰딩 온도를 조절해 최종 합격 목표를 달성하세요.  실험 비용: ₩{SemiconGameState.ExperimentCreditCost:N0}",
                     GetExperimentTarget(8));
                 return;
             }
@@ -256,7 +259,7 @@ namespace SemiconCity.Game
             }
 
             SetObjective("ORDER_DELIVER", "FIRST CONTRACT  /  01", "완성된 SC-01 주문 납품",
-                $"자재 거래소 주문 버튼으로 1개를 납품하세요.  보상 ₩{SemiconGameState.FirstOrderCreditReward:N0} + 연구 데이터 {SemiconGameState.FirstOrderResearchReward}",
+                $"자재 거래소 주문 버튼으로 1개를 납품하세요.  보상 ₩{SemiconGameState.FirstOrderCreditReward:N0}",
                 GetMarketTarget());
         }
 

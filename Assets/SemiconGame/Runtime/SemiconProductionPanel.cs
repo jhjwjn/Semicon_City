@@ -14,6 +14,7 @@ namespace SemiconCity.Game
         [SerializeField] private Text recipeProductText;
         [SerializeField] private Text recipeDescriptionText;
         [SerializeField] private Text recipeCostText;
+        [SerializeField] private Text recipeVariantText;
         [SerializeField] private Text siliconLabelText;
         [SerializeField] private Text gasLabelText;
         [SerializeField] private Text chemicalLabelText;
@@ -27,6 +28,8 @@ namespace SemiconCity.Game
         [SerializeField] private Text slotText;
         [SerializeField] private Text loadoutText;
         [SerializeField] private Text performanceText;
+        [SerializeField] private Text cycleCountText;
+        [SerializeField] private Text cycleSummaryText;
         [SerializeField] private Text queueStatusText;
         [SerializeField] private RectTransform progressFill;
         [SerializeField] private Button waferRecipeButton;
@@ -39,6 +42,12 @@ namespace SemiconCity.Game
         [SerializeField] private Button sc01RecipeButton;
         [SerializeField] private Button pm10RecipeButton;
         [SerializeField] private Button dd20RecipeButton;
+        [SerializeField] private Button previousVariantButton;
+        [SerializeField] private Button nextVariantButton;
+        [SerializeField] private Button cycleDecreaseButton;
+        [SerializeField] private Button cycleIncreaseButton;
+        [SerializeField] private Button cycleOneButton;
+        [SerializeField] private Button cycleFiveButton;
         [SerializeField] private Button produceButton;
         [SerializeField] private Button collectButton;
         [SerializeField] private Button closeButton;
@@ -50,6 +59,8 @@ namespace SemiconCity.Game
         private bool isOpen;
         private int activeSlotIndex;
         private SemiconRecipeKind selectedRecipe = SemiconRecipeKind.WaferSubstrate;
+        private int selectedVariantIndex = -1;
+        private int selectedBatches = 1;
         private bool wasJobComplete;
 
         private void Awake()
@@ -64,6 +75,12 @@ namespace SemiconCity.Game
             sc01RecipeButton?.onClick.AddListener(() => SelectRecipe(SemiconRecipeKind.Sc01ControlSensor));
             pm10RecipeButton?.onClick.AddListener(() => SelectRecipe(SemiconRecipeKind.Pm10PowerManagement));
             dd20RecipeButton?.onClick.AddListener(() => SelectRecipe(SemiconRecipeKind.Dd20DisplayDriver));
+            previousVariantButton?.onClick.AddListener(() => CycleVariant(-1));
+            nextVariantButton?.onClick.AddListener(() => CycleVariant(1));
+            cycleDecreaseButton?.onClick.AddListener(() => SetBatchCount(selectedBatches - 1));
+            cycleIncreaseButton?.onClick.AddListener(() => SetBatchCount(selectedBatches + 1));
+            cycleOneButton?.onClick.AddListener(() => SetBatchCount(1));
+            cycleFiveButton?.onClick.AddListener(() => SetBatchCount(5));
             produceButton?.onClick.AddListener(StartProduction);
             collectButton?.onClick.AddListener(CollectProduction);
             closeButton?.onClick.AddListener(Close);
@@ -108,7 +125,10 @@ namespace SemiconCity.Game
             SemiconHud targetHud,
             Text selectedSlot = null, Text loadout = null, Text performance = null, Text queueStatus = null,
             RectTransform targetProgressFill = null, Text siliconLabel = null, Text gasLabel = null,
-            Text chemicalLabel = null)
+            Text chemicalLabel = null, Text recipeVariant = null, Button previousVariant = null,
+            Button nextVariant = null, Text cycleCount = null, Text cycleSummary = null,
+            Button cycleDecrease = null, Button cycleIncrease = null, Button cycleOne = null,
+            Button cycleFive = null)
         {
             panelGroup = group;
             panelFrame = frame;
@@ -146,6 +166,15 @@ namespace SemiconCity.Game
             siliconLabelText = siliconLabel;
             gasLabelText = gasLabel;
             chemicalLabelText = chemicalLabel;
+            recipeVariantText = recipeVariant;
+            previousVariantButton = previousVariant;
+            nextVariantButton = nextVariant;
+            cycleCountText = cycleCount;
+            cycleSummaryText = cycleSummary;
+            cycleDecreaseButton = cycleDecrease;
+            cycleIncreaseButton = cycleIncrease;
+            cycleOneButton = cycleOne;
+            cycleFiveButton = cycleFive;
         }
 
         public void Open(SemiconPlayerController player, SemiconThirdPersonCamera followCamera)
@@ -160,6 +189,8 @@ namespace SemiconCity.Game
             activeSlotIndex = Mathf.Clamp(slotIndex, 0, SemiconFactoryDefinitions.SlotCount - 1);
             var job = SemiconGameState.Instance?.GetProductionJob(activeSlotIndex) ?? default;
             selectedRecipe = job.HasJob ? job.Recipe : SemiconRecipeKind.WaferSubstrate;
+            selectedBatches = job.HasJob ? Mathf.Clamp(job.Batches, 1, 10) : 1;
+            selectedVariantIndex = SemiconGameState.Instance?.GetRecommendedRecipeVariantIndex(selectedRecipe) ?? -1;
             activePlayer = player;
             activeCamera = followCamera;
             activePlayer?.SetInputEnabled(false);
@@ -168,8 +199,8 @@ namespace SemiconCity.Game
             isOpen = true;
             SetStatus(job.HasJob
                 ? "ACTIVE PROCESS  /  저장된 생산 작업을 불러왔습니다."
-                : "PROCESS CELL READY  /  레시피를 선택하고 생산을 시작하세요.",
-                new Color32(134, 164, 168, 255));
+                : "1 레시피 선택  →  2 횟수 지정  →  3 재료 확인  →  4 생산 시작·회수",
+                SemiconUiPalette.Muted);
             Refresh();
 
             if (animationRoutine != null) StopCoroutine(animationRoutine);
@@ -189,8 +220,32 @@ namespace SemiconCity.Game
             var state = SemiconGameState.Instance;
             if (state == null || state.GetProductionJob(activeSlotIndex).HasJob) return;
             selectedRecipe = recipe;
+            selectedVariantIndex = state.GetRecommendedRecipeVariantIndex(recipe);
             SetStatus("RECIPE SELECTED  /  " + SemiconFactoryDefinitions.GetRecipeName(recipe),
-                new Color32(41, 211, 207, 255));
+                SemiconUiPalette.Mint);
+            Refresh();
+        }
+
+        private void CycleVariant(int direction)
+        {
+            var state = SemiconGameState.Instance;
+            if (state == null || state.GetProductionJob(activeSlotIndex).HasJob) return;
+            var count = state.GetRecipeVariantCount(selectedRecipe);
+            if (count <= 1) return;
+            selectedVariantIndex = (selectedVariantIndex + direction + count) % count;
+            var variant = state.GetRecipeVariant(selectedRecipe, selectedVariantIndex);
+            if (variant != null)
+                SetStatus($"RECIPE SELECTED  /  {variant.DisplayCode}  ·  품질 {variant.qualityScore}",
+                    SemiconUiPalette.Mint);
+            Refresh();
+        }
+
+        private void SetBatchCount(int value)
+        {
+            var state = SemiconGameState.Instance;
+            if (state != null && state.GetProductionJob(activeSlotIndex).HasJob) return;
+            selectedBatches = Mathf.Clamp(value, 1, 10);
+            SetStatus($"생산 수량 선택  /  {selectedBatches}회 사이클", SemiconUiPalette.Mint);
             Refresh();
         }
 
@@ -198,7 +253,8 @@ namespace SemiconCity.Game
         {
             var state = SemiconGameState.Instance;
             if (state == null) return;
-            if (!state.TryStartProduction(activeSlotIndex, selectedRecipe, 1, out var job, out var reason))
+            if (!state.TryStartProduction(activeSlotIndex, selectedRecipe, selectedBatches, selectedVariantIndex,
+                    out var job, out var reason))
             {
                 SetStatus("PROCESS WAITING  /  " + reason, new Color32(238, 103, 89, 255));
                 hud?.ShowToast(reason);
@@ -206,7 +262,7 @@ namespace SemiconCity.Game
             }
 
             SetStatus($"PROCESS STARTED  /  {SemiconFactoryDefinitions.GetRecipeName(job.Recipe)}  ·  " +
-                      $"예상 {job.TotalSeconds:0.0}초", new Color32(247, 169, 30, 255));
+                      $"예상 {job.TotalSeconds:0.0}초", SemiconUiPalette.Amber);
             hud?.ShowToast($"SLOT {activeSlotIndex + 1:00} 생산을 시작했습니다.");
             Refresh();
         }
@@ -225,7 +281,7 @@ namespace SemiconCity.Game
 
             selectedRecipe = recipe;
             SetStatus($"COLLECT COMPLETE  /  {SemiconFactoryDefinitions.GetRecipeName(recipe)} +{output}  ·  품질 {quality}",
-                new Color32(247, 169, 30, 255));
+                SemiconUiPalette.Amber);
             hud?.ShowToast($"생산품 {output}개를 창고로 회수했습니다.");
             Refresh();
         }
@@ -249,9 +305,17 @@ namespace SemiconCity.Game
             var isMetal = selectedRecipe == SemiconRecipeKind.MetalizedWafer;
             var isEds = selectedRecipe == SemiconRecipeKind.TestedWafer;
             var recipeCode = GetRecipeCode(selectedRecipe);
+            var variantCount = state.GetRecipeVariantCount(selectedRecipe);
+            if (!job.HasJob)
+            {
+                if (variantCount == 0) selectedVariantIndex = -1;
+                else if (selectedVariantIndex < 0 || selectedVariantIndex >= variantCount)
+                    selectedVariantIndex = state.GetRecommendedRecipeVariantIndex(selectedRecipe);
+            }
+            var selectedVariant = state.GetRecipeVariant(selectedRecipe, selectedVariantIndex);
 
             if (recipeHeaderText != null)
-                recipeHeaderText.text = $"ACTIVE RECIPE  /  {recipeCode}";
+                recipeHeaderText.text = $"1 레시피 선택  /  {(selectedVariant != null ? selectedVariant.DisplayCode : recipeCode)}";
             if (recipeStatusText != null)
             {
                 var available = selectedRecipe switch
@@ -275,60 +339,65 @@ namespace SemiconCity.Game
                         : $"{recipeCode} RECIPE  /  QUALIFIED")
                     : $"{recipeCode} RECIPE  /  LOCKED";
                 recipeStatusText.color = available
-                    ? new Color32(41, 211, 207, 255)
+                    ? SemiconUiPalette.Mint
                     : new Color32(238, 103, 89, 255);
             }
+            if (recipeVariantText != null)
+            {
+                recipeVariantText.text = selectedRecipe == SemiconRecipeKind.WaferSubstrate
+                    ? "기초 레시피  ·  자동 적용"
+                    : selectedVariant != null
+                        ? $"{selectedVariantIndex + 1} / {variantCount}   {selectedVariant.Grade}등급 · {selectedVariant.StyleName} · 품질 {selectedVariant.qualityScore}"
+                        : "등록된 레시피 없음  ·  실험실에서 합격 조건을 찾으세요";
+                recipeVariantText.color = selectedVariant != null || selectedRecipe == SemiconRecipeKind.WaferSubstrate
+                    ? SemiconUiPalette.Mint
+                    : new Color32(238, 103, 89, 255);
+            }
+            if (previousVariantButton != null)
+                previousVariantButton.interactable = !job.HasJob && variantCount > 1;
+            if (nextVariantButton != null)
+                nextVariantButton.interactable = !job.HasJob && variantCount > 1;
             if (recipeProductText != null) recipeProductText.text = SemiconFactoryDefinitions.GetRecipeName(selectedRecipe);
             if (recipeDescriptionText != null)
-                recipeDescriptionText.text = SemiconFactoryDefinitions.GetRecipeDescription(selectedRecipe);
-            if (recipeCostText != null) recipeCostText.text = SemiconFactoryDefinitions.GetRecipeCostText(selectedRecipe);
+                recipeDescriptionText.text = selectedVariant != null
+                    ? $"선택 조건  /  {selectedVariant.ParameterSummary}\n예상 결과  /  {selectedVariant.ResultSummary}"
+                    : SemiconFactoryDefinitions.GetRecipeDescription(selectedRecipe);
 
-            if (siliconLabelText != null)
-                siliconLabelText.text = isPackagedProduct ? "01  EDS 선별 웨이퍼" : isEds ? "01  배선 웨이퍼" : isMetal ? "01  박막 웨이퍼" : isDeposition ? "01  식각 웨이퍼" : isEtch ? "01  패턴 웨이퍼" : isPhoto ? "01  산화 웨이퍼" :
-                    isOxidation ? "01  기초 웨이퍼" : "01  고순도 실리콘";
+            GetMaterialDisplayNames(selectedRecipe, out var primaryMaterialName, out var secondaryMaterialName);
+            if (siliconLabelText != null) siliconLabelText.text = "주재료  /  " + primaryMaterialName;
             if (gasLabelText != null)
-                gasLabelText.text = isPackagedProduct ? "02  몰딩 컴파운드" : isEds ? "02  검사 프로브" : isMetal ? "02  배선 금속 타깃" : isDeposition ? "02  증착 가스" : isEtch ? "02  식각 가스" : isPhoto ? "02  포토레지스트" :
-                    isOxidation ? "02  산화 가스" : "02  특수가스";
-            if (chemicalLabelText != null)
-                chemicalLabelText.text = isPackagedProduct ? "03  패키징 툴" : isPhoto || isEtch || isDeposition || isMetal || isEds ? "03  보조 재료" : "03  공정 약품";
+                gasLabelText.text = string.IsNullOrEmpty(secondaryMaterialName)
+                    ? "보조재료  /  필요 없음"
+                    : "보조재료  /  " + secondaryMaterialName;
+            if (chemicalLabelText != null) chemicalLabelText.text = "생산 준비 상태";
+
+            GetMaterialRequirements(state, selectedRecipe, selectedBatches, out var primaryStock,
+                out var primaryRequired, out var secondaryStock, out var secondaryRequired);
+            var primaryReady = primaryStock >= primaryRequired;
+            var secondaryReady = secondaryRequired <= 0 || secondaryStock >= secondaryRequired;
             if (siliconStockText != null)
-                siliconStockText.text = isPackagedProduct
-                    ? $"{state.TestedWaferStock:N0}  /  {SemiconGameState.PackageTestedWaferCost}"
-                    : isEds
-                    ? $"{state.MetalizedWaferStock:N0}  /  {SemiconGameState.EdsMetalizedWaferCost}"
-                    : isMetal
-                    ? $"{state.DepositedWaferStock:N0}  /  {SemiconGameState.MetalDepositedWaferCost}"
-                    : isDeposition
-                    ? $"{state.EtchedWaferStock:N0}  /  {SemiconGameState.DepositionEtchedWaferCost}"
-                    : isEtch
-                        ? $"{state.PatternedWaferStock:N0}  /  {SemiconGameState.EtchPatternedWaferCost}"
-                        : isPhoto
-                        ? $"{state.OxidizedWaferStock:N0}  /  {SemiconGameState.PhotoOxidizedWaferCost}"
-                        : isOxidation
-                        ? $"{state.WaferStock:N0}  /  {SemiconGameState.OxidationWaferCost}"
-                        : $"{state.SiliconStock:N0}  /  {SemiconGameState.WaferSiliconCost}";
+            {
+                siliconStockText.text = $"보유 {primaryStock:N0}개  ·  필요 {primaryRequired:N0}개";
+                siliconStockText.color = primaryReady ? SemiconUiPalette.Mint : new Color32(238, 103, 89, 255);
+            }
             if (gasStockText != null)
-                gasStockText.text = isPackagedProduct
-                    ? $"{state.ChemicalStock:N0}  /  {SemiconGameState.PackageChemicalCost}"
-                    : isEds
-                    ? "READY  /  REUSE"
-                    : isMetal
-                    ? $"{state.MetalTargetStock:N0}  /  {SemiconGameState.MetalTargetCost}"
-                    : isDeposition
-                    ? $"{state.ProcessGasStock:N0}  /  {SemiconGameState.DepositionGasCost}"
-                    : isEtch
-                        ? $"{state.ProcessGasStock:N0}  /  {SemiconGameState.EtchGasCost}"
-                        : isPhoto
-                        ? $"{state.ChemicalStock:N0}  /  {SemiconGameState.PhotoChemicalCost}"
-                        : isOxidation
-                        ? $"{state.ProcessGasStock:N0}  /  {SemiconGameState.OxidationGasCost}"
-                        : $"{state.ProcessGasStock:N0}  /  --";
+            {
+                gasStockText.text = secondaryRequired > 0
+                    ? $"보유 {secondaryStock:N0}개  ·  필요 {secondaryRequired:N0}개"
+                    : "추가 투입 없음";
+                gasStockText.color = secondaryReady ? SemiconUiPalette.Mint : new Color32(238, 103, 89, 255);
+            }
             if (chemicalStockText != null)
-                chemicalStockText.text = isPackagedProduct
-                    ? "READY  /  REUSE"
-                    : isPhoto || isEtch || isDeposition || isMetal || isEds
-                    ? "--  /  --"
-                    : $"{state.ChemicalStock:N0}  /  --";
+            {
+                var missingTypes = (primaryReady ? 0 : 1) + (secondaryReady ? 0 : 1);
+                chemicalStockText.text = missingTypes == 0 ? "준비 완료  ·  생산 가능" : $"재료 {missingTypes}종 부족";
+                chemicalStockText.color = primaryReady && secondaryReady
+                    ? SemiconUiPalette.Mint : new Color32(238, 103, 89, 255);
+            }
+            if (recipeCostText != null)
+                recipeCostText.text = $"생산 {selectedBatches}회 총 투입량\n\n" +
+                                      $"{primaryMaterialName}  {primaryRequired:N0}개" +
+                                      (secondaryRequired > 0 ? $"\n{secondaryMaterialName}  {secondaryRequired:N0}개" : string.Empty);
 
             if (outputProductText != null)
                 outputProductText.text = selectedRecipe switch
@@ -350,52 +419,33 @@ namespace SemiconCity.Game
             if (slotText != null) slotText.text = $"ACTIVE CELL  /  SLOT {activeSlotIndex + 1:00}";
             if (loadoutText != null && slot != null)
             {
-                loadoutText.text = $"{SemiconFactoryDefinitions.GetWorkerName(slot.worker)}\n" +
-                                   $"{SemiconFactoryDefinitions.GetDiskName(slot.disk)}";
+                slot.EnsureCrewSlots();
+                var crewCount = 0;
+                for (var crew = 0; crew < SemiconFactoryDefinitions.RobotsPerSlot; crew++)
+                    if (slot.robots[crew] != SemiconRobotKind.None) crewCount++;
+                loadoutText.text = $"운용 로봇  {crewCount} / {SemiconFactoryDefinitions.RobotsPerSlot}  ·  " +
+                                   $"생산 {stats.Production}%  /  속도 {stats.Speed}%  /  품질 {stats.Quality}";
             }
 
             var cycleSeconds = SemiconFactoryDefinitions.GetBaseCycleSeconds(selectedRecipe) * 100f /
                                Mathf.Max(1, stats.Speed);
-            var performanceQuality = (isOxidation || isPhoto || isEtch || isDeposition || isMetal || isEds || isPackagedProduct)
-                ? job.HasJob
-                    ? job.Quality
-                    : isOxidation
-                        ? Mathf.Clamp(Mathf.RoundToInt(state.AverageWaferQuality * 0.35f + stats.Quality * 0.30f +
-                                                       state.BestOxideUniformity * 0.35f), 1, 100)
-                        : isPhoto
-                            ? Mathf.Clamp(Mathf.RoundToInt(state.AverageOxidizedWaferQuality * 0.40f +
-                                                           stats.Quality * 0.30f +
-                                                           (state.BestYield + state.BestPrecision) * 0.15f), 1, 100)
-                            : isEtch
-                                ? Mathf.Clamp(Mathf.RoundToInt(state.AveragePatternedWaferQuality * 0.40f +
-                                                               stats.Quality * 0.30f + state.BestEtchProfile * 0.30f),
-                                    1, 100)
-                                : isDeposition
-                                    ? Mathf.Clamp(Mathf.RoundToInt(state.AverageEtchedWaferQuality * 0.40f +
-                                                                   stats.Quality * 0.30f +
-                                                                   state.BestDepositionUniformity * 0.18f +
-                                                                   state.BestDepositionCoverage * 0.12f), 1, 100)
-                                    : isMetal
-                                        ? Mathf.Clamp(Mathf.RoundToInt(state.AverageDepositedWaferQuality * 0.40f +
-                                                                       stats.Quality * 0.30f +
-                                                                       state.BestMetalAdhesion * 0.20f +
-                                                                       Mathf.Clamp(100f - Mathf.Abs(
-                                                                           state.BestMetalResistance - 0.1f) * 250f,
-                                                                           60f, 100f) * 0.10f), 1, 100)
-                                        : isEds
-                                            ? Mathf.Clamp(Mathf.RoundToInt(state.AverageMetalizedWaferQuality * 0.40f +
-                                                                           stats.Quality * 0.30f +
-                                                                           state.BestEdsDetection * 0.20f +
-                                                                           state.BestEdsYield * 0.10f), 1, 100)
-                                            : Mathf.Clamp(Mathf.RoundToInt(state.AverageTestedWaferQuality * 0.40f +
-                                                                           stats.Quality * 0.25f +
-                                                                           state.BestPackageBondStrength * 0.15f +
-                                                                           state.BestPackageIntegrity * 0.10f +
-                                                                           state.BestPackageFinalPass * 0.10f), 1, 100)
-                : stats.Quality;
+            var previewBatches = job.HasJob ? job.Batches : selectedBatches;
+            if (job.HasJob) selectedBatches = Mathf.Clamp(job.Batches, 1, 10);
+            var performanceQuality = job.HasJob
+                ? job.Quality
+                : state.PreviewProductionQuality(activeSlotIndex, selectedRecipe, selectedVariantIndex);
+            if (cycleCountText != null)
+            {
+                cycleCountText.text = $"{previewBatches} 회";
+                cycleCountText.color = SemiconUiPalette.Ink;
+            }
+            if (cycleSummaryText != null)
+                cycleSummaryText.text = $"총 {cycleSeconds * previewBatches:0.0}초  ·  예상 {stats.OutputPerCycle * previewBatches}개";
             if (performanceText != null)
             {
-                performanceText.text = $"CYCLE TIME    {cycleSeconds:0.0}s\nOUTPUT        {stats.OutputPerCycle} UNIT\nQUALITY       {performanceQuality}";
+                performanceText.text = $"총 작업 시간     {cycleSeconds * previewBatches:0.0}초\n" +
+                                       $"예상 생산량      {stats.OutputPerCycle * previewBatches}개\n" +
+                                       $"예상 품질        {performanceQuality}";
             }
             if (waferRecipeButton != null) waferRecipeButton.interactable = !job.HasJob;
             if (oxidationRecipeButton != null) oxidationRecipeButton.interactable = !job.HasJob;
@@ -409,6 +459,10 @@ namespace SemiconCity.Game
                 state.IsContractUnlocked(SemiconContractKind.Pm10PowerManagement);
             if (dd20RecipeButton != null) dd20RecipeButton.interactable = !job.HasJob &&
                 state.IsContractUnlocked(SemiconContractKind.Dd20DisplayDriver);
+            if (cycleDecreaseButton != null) cycleDecreaseButton.interactable = !job.HasJob && selectedBatches > 1;
+            if (cycleIncreaseButton != null) cycleIncreaseButton.interactable = !job.HasJob && selectedBatches < 10;
+            if (cycleOneButton != null) cycleOneButton.interactable = !job.HasJob;
+            if (cycleFiveButton != null) cycleFiveButton.interactable = !job.HasJob;
             SetButtonLabel(waferRecipeButton, "WAFER" + (selectedRecipe == SemiconRecipeKind.WaferSubstrate ? "  ◀" : string.Empty));
             SetButtonLabel(oxidationRecipeButton, "OXIDE" + (selectedRecipe == SemiconRecipeKind.OxidizedWafer ? "  ◀" : string.Empty));
             SetButtonLabel(photoRecipeButton, "PHOTO" + (selectedRecipe == SemiconRecipeKind.PhotoPatternedWafer ? "  ◀" : string.Empty));
@@ -417,8 +471,20 @@ namespace SemiconCity.Game
             SetButtonLabel(metalRecipeButton, "METAL" + (selectedRecipe == SemiconRecipeKind.MetalizedWafer ? "  ◀" : string.Empty));
             SetButtonLabel(edsRecipeButton, "EDS" + (selectedRecipe == SemiconRecipeKind.TestedWafer ? "  ◀" : string.Empty));
             SetButtonLabel(sc01RecipeButton, "PACKAGE" + (selectedRecipe == SemiconRecipeKind.Sc01ControlSensor ? "  ◀" : string.Empty));
-            SetButtonLabel(pm10RecipeButton, "PM-10" + (selectedRecipe == SemiconRecipeKind.Pm10PowerManagement ? "  ◀" : string.Empty));
-            SetButtonLabel(dd20RecipeButton, "DD-20" + (selectedRecipe == SemiconRecipeKind.Dd20DisplayDriver ? "  ◀" : string.Empty));
+            SetButtonLabel(pm10RecipeButton, "PM-10  전력 IC" + (selectedRecipe == SemiconRecipeKind.Pm10PowerManagement ? "  ◀" : string.Empty));
+            SetButtonLabel(dd20RecipeButton, "DD-20  화면 IC" + (selectedRecipe == SemiconRecipeKind.Dd20DisplayDriver ? "  ◀" : string.Empty));
+            SemiconUiPalette.SetButtonSelection(waferRecipeButton, selectedRecipe == SemiconRecipeKind.WaferSubstrate);
+            SemiconUiPalette.SetButtonSelection(oxidationRecipeButton, selectedRecipe == SemiconRecipeKind.OxidizedWafer);
+            SemiconUiPalette.SetButtonSelection(photoRecipeButton, selectedRecipe == SemiconRecipeKind.PhotoPatternedWafer);
+            SemiconUiPalette.SetButtonSelection(etchRecipeButton, selectedRecipe == SemiconRecipeKind.EtchedWafer);
+            SemiconUiPalette.SetButtonSelection(depositionRecipeButton, selectedRecipe == SemiconRecipeKind.DepositedWafer);
+            SemiconUiPalette.SetButtonSelection(metalRecipeButton, selectedRecipe == SemiconRecipeKind.MetalizedWafer);
+            SemiconUiPalette.SetButtonSelection(edsRecipeButton, selectedRecipe == SemiconRecipeKind.TestedWafer);
+            SemiconUiPalette.SetButtonSelection(sc01RecipeButton, selectedRecipe == SemiconRecipeKind.Sc01ControlSensor);
+            SemiconUiPalette.SetButtonSelection(pm10RecipeButton, selectedRecipe == SemiconRecipeKind.Pm10PowerManagement,
+                !state.IsContractUnlocked(SemiconContractKind.Pm10PowerManagement));
+            SemiconUiPalette.SetButtonSelection(dd20RecipeButton, selectedRecipe == SemiconRecipeKind.Dd20DisplayDriver,
+                !state.IsContractUnlocked(SemiconContractKind.Dd20DisplayDriver));
             wasJobComplete = job.IsComplete;
             RefreshLiveState();
             RefreshTextMeshes();
@@ -441,18 +507,19 @@ namespace SemiconCity.Game
             {
                 if (!job.HasJob)
                 {
-                    queueStatusText.text = "QUEUE EMPTY  /  START READY";
-                    queueStatusText.color = new Color32(134, 164, 168, 255);
+                    var ready = CanStartSelected(state);
+                    queueStatusText.text = ready ? "생산 준비 완료" : "재료 부족  /  가운데 재료 목록을 확인하세요";
+                    queueStatusText.color = ready ? SemiconUiPalette.Mint : SemiconUiPalette.Danger;
                 }
                 else if (job.IsComplete)
                 {
                     queueStatusText.text = $"PROCESS COMPLETE  /  {job.OutputAmount} UNIT 회수 대기";
-                    queueStatusText.color = new Color32(247, 169, 30, 255);
+                    queueStatusText.color = SemiconUiPalette.Amber;
                 }
                 else
                 {
                     queueStatusText.text = $"PROCESSING  /  {job.RemainingSeconds:0.0}s  ·  {job.Progress * 100f:0}%";
-                    queueStatusText.color = new Color32(41, 211, 207, 255);
+                    queueStatusText.color = SemiconUiPalette.Mint;
                 }
             }
 
@@ -460,7 +527,7 @@ namespace SemiconCity.Game
             {
                 produceButton.gameObject.SetActive(!job.HasJob);
                 produceButton.interactable = !job.HasJob && CanStartSelected(state);
-                SetButtonLabel(produceButton, "1 사이클 시작    ▶    " + GetRecipeCode(selectedRecipe));
+                SetButtonLabel(produceButton, $"{selectedBatches}회 생산 시작    ▶    " + GetRecipeCode(selectedRecipe));
             }
             if (collectButton != null)
             {
@@ -472,7 +539,7 @@ namespace SemiconCity.Game
                 !productionStatusText.text.StartsWith("COLLECT COMPLETE"))
             {
                 SetStatus("PROCESS COMPLETE  /  기계와 상호작용하여 생산품을 회수하세요.",
-                    new Color32(247, 169, 30, 255));
+                    SemiconUiPalette.Amber);
             }
             if (completionChanged)
             {
@@ -484,36 +551,115 @@ namespace SemiconCity.Game
         private bool CanStartSelected(SemiconGameState state)
         {
             if (selectedRecipe == SemiconRecipeKind.WaferSubstrate)
-                return state.SiliconStock >= SemiconGameState.WaferSiliconCost;
+                return state.SiliconStock >= SemiconGameState.WaferSiliconCost * selectedBatches;
             if (selectedRecipe == SemiconRecipeKind.OxidizedWafer)
-                return state.OxidationRecipeQualified && state.WaferStock >= SemiconGameState.OxidationWaferCost &&
-                       state.ProcessGasStock >= SemiconGameState.OxidationGasCost;
+                return state.OxidationRecipeQualified && state.WaferStock >= SemiconGameState.OxidationWaferCost * selectedBatches &&
+                       state.ProcessGasStock >= SemiconGameState.OxidationGasCost * selectedBatches;
             if (selectedRecipe == SemiconRecipeKind.PhotoPatternedWafer)
                 return state.PhotoRecipeQualified &&
-                       state.OxidizedWaferStock >= SemiconGameState.PhotoOxidizedWaferCost &&
-                       state.ChemicalStock >= SemiconGameState.PhotoChemicalCost;
+                       state.OxidizedWaferStock >= SemiconGameState.PhotoOxidizedWaferCost * selectedBatches &&
+                       state.ChemicalStock >= SemiconGameState.PhotoChemicalCost * selectedBatches;
             if (selectedRecipe == SemiconRecipeKind.EtchedWafer)
                 return state.EtchRecipeQualified &&
-                       state.PatternedWaferStock >= SemiconGameState.EtchPatternedWaferCost &&
-                       state.ProcessGasStock >= SemiconGameState.EtchGasCost;
+                       state.PatternedWaferStock >= SemiconGameState.EtchPatternedWaferCost * selectedBatches &&
+                       state.ProcessGasStock >= SemiconGameState.EtchGasCost * selectedBatches;
             if (selectedRecipe == SemiconRecipeKind.DepositedWafer)
                 return state.DepositionRecipeQualified &&
-                       state.EtchedWaferStock >= SemiconGameState.DepositionEtchedWaferCost &&
-                       state.ProcessGasStock >= SemiconGameState.DepositionGasCost;
+                       state.EtchedWaferStock >= SemiconGameState.DepositionEtchedWaferCost * selectedBatches &&
+                       state.ProcessGasStock >= SemiconGameState.DepositionGasCost * selectedBatches;
             if (selectedRecipe == SemiconRecipeKind.MetalizedWafer)
                 return state.MetalRecipeQualified &&
-                       state.DepositedWaferStock >= SemiconGameState.MetalDepositedWaferCost &&
-                       state.MetalTargetStock >= SemiconGameState.MetalTargetCost;
+                       state.DepositedWaferStock >= SemiconGameState.MetalDepositedWaferCost * selectedBatches &&
+                       state.MetalTargetStock >= SemiconGameState.MetalTargetCost * selectedBatches;
             if (selectedRecipe == SemiconRecipeKind.TestedWafer)
                 return state.EdsRecipeQualified &&
-                       state.MetalizedWaferStock >= SemiconGameState.EdsMetalizedWaferCost;
+                       state.MetalizedWaferStock >= SemiconGameState.EdsMetalizedWaferCost * selectedBatches;
             if (selectedRecipe == SemiconRecipeKind.Pm10PowerManagement &&
                 !state.IsContractUnlocked(SemiconContractKind.Pm10PowerManagement)) return false;
             if (selectedRecipe == SemiconRecipeKind.Dd20DisplayDriver &&
                 !state.IsContractUnlocked(SemiconContractKind.Dd20DisplayDriver)) return false;
             return state.PackageRecipeQualified &&
-                   state.TestedWaferStock >= SemiconGameState.PackageTestedWaferCost &&
-                   state.ChemicalStock >= SemiconGameState.PackageChemicalCost;
+                   state.TestedWaferStock >= SemiconGameState.PackageTestedWaferCost * selectedBatches &&
+                   state.ChemicalStock >= SemiconGameState.PackageChemicalCost * selectedBatches;
+        }
+
+        private static void GetMaterialRequirements(SemiconGameState state, SemiconRecipeKind recipe, int batches,
+            out int primaryStock, out int primaryRequired, out int secondaryStock, out int secondaryRequired)
+        {
+            primaryStock = state.SiliconStock;
+            primaryRequired = SemiconGameState.WaferSiliconCost * batches;
+            secondaryStock = 0;
+            secondaryRequired = 0;
+            switch (recipe)
+            {
+                case SemiconRecipeKind.OxidizedWafer:
+                    primaryStock = state.WaferStock;
+                    primaryRequired = SemiconGameState.OxidationWaferCost * batches;
+                    secondaryStock = state.ProcessGasStock;
+                    secondaryRequired = SemiconGameState.OxidationGasCost * batches;
+                    break;
+                case SemiconRecipeKind.PhotoPatternedWafer:
+                    primaryStock = state.OxidizedWaferStock;
+                    primaryRequired = SemiconGameState.PhotoOxidizedWaferCost * batches;
+                    secondaryStock = state.ChemicalStock;
+                    secondaryRequired = SemiconGameState.PhotoChemicalCost * batches;
+                    break;
+                case SemiconRecipeKind.EtchedWafer:
+                    primaryStock = state.PatternedWaferStock;
+                    primaryRequired = SemiconGameState.EtchPatternedWaferCost * batches;
+                    secondaryStock = state.ProcessGasStock;
+                    secondaryRequired = SemiconGameState.EtchGasCost * batches;
+                    break;
+                case SemiconRecipeKind.DepositedWafer:
+                    primaryStock = state.EtchedWaferStock;
+                    primaryRequired = SemiconGameState.DepositionEtchedWaferCost * batches;
+                    secondaryStock = state.ProcessGasStock;
+                    secondaryRequired = SemiconGameState.DepositionGasCost * batches;
+                    break;
+                case SemiconRecipeKind.MetalizedWafer:
+                    primaryStock = state.DepositedWaferStock;
+                    primaryRequired = SemiconGameState.MetalDepositedWaferCost * batches;
+                    secondaryStock = state.MetalTargetStock;
+                    secondaryRequired = SemiconGameState.MetalTargetCost * batches;
+                    break;
+                case SemiconRecipeKind.TestedWafer:
+                    primaryStock = state.MetalizedWaferStock;
+                    primaryRequired = SemiconGameState.EdsMetalizedWaferCost * batches;
+                    break;
+                case SemiconRecipeKind.Sc01ControlSensor:
+                case SemiconRecipeKind.Pm10PowerManagement:
+                case SemiconRecipeKind.Dd20DisplayDriver:
+                    primaryStock = state.TestedWaferStock;
+                    primaryRequired = SemiconGameState.PackageTestedWaferCost * batches;
+                    secondaryStock = state.ChemicalStock;
+                    secondaryRequired = SemiconGameState.PackageChemicalCost * batches;
+                    break;
+            }
+        }
+
+        private static void GetMaterialDisplayNames(SemiconRecipeKind recipe, out string primary, out string secondary)
+        {
+            primary = "고순도 실리콘";
+            secondary = string.Empty;
+            switch (recipe)
+            {
+                case SemiconRecipeKind.OxidizedWafer:
+                    primary = "기초 웨이퍼"; secondary = "산화 공정 가스"; break;
+                case SemiconRecipeKind.PhotoPatternedWafer:
+                    primary = "산화 웨이퍼"; secondary = "포토 공정 약품"; break;
+                case SemiconRecipeKind.EtchedWafer:
+                    primary = "패턴 웨이퍼"; secondary = "식각 공정 가스"; break;
+                case SemiconRecipeKind.DepositedWafer:
+                    primary = "식각 웨이퍼"; secondary = "증착 공정 가스"; break;
+                case SemiconRecipeKind.MetalizedWafer:
+                    primary = "박막 웨이퍼"; secondary = "배선 금속 타깃"; break;
+                case SemiconRecipeKind.TestedWafer:
+                    primary = "배선 웨이퍼"; break;
+                case SemiconRecipeKind.Sc01ControlSensor:
+                case SemiconRecipeKind.Pm10PowerManagement:
+                case SemiconRecipeKind.Dd20DisplayDriver:
+                    primary = "EDS 선별 웨이퍼"; secondary = "패키징 공정 약품"; break;
+            }
         }
 
         private static string GetRecipeCode(SemiconRecipeKind recipe)

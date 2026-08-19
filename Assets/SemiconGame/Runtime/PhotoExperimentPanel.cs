@@ -43,7 +43,7 @@ namespace SemiconCity.Game
             }
         }
 
-        private const int ExperimentCost = 8;
+        private const int ExperimentCost = SemiconGameState.ExperimentCreditCost;
         private const float ReadyPatternReveal = 0.34f;
 
         [Header("Root")]
@@ -300,9 +300,9 @@ namespace SemiconCity.Game
             }
 
             var state = SemiconGameState.Instance;
-            if (state == null || !state.TrySpendResearch(ExperimentCost))
+            if (state == null || !state.TrySpendCredits(ExperimentCost))
             {
-                hud?.ShowToast($"연구 데이터가 부족합니다. 실험에는 {ExperimentCost}개가 필요합니다.");
+                hud?.ShowToast($"실험 비용이 부족합니다. 1회에 ₩{ExperimentCost:N0}이 필요합니다.");
                 return;
             }
 
@@ -436,7 +436,11 @@ namespace SemiconCity.Game
 
             if (resultRecipeText != null)
             {
-                resultRecipeText.text = result.Qualified ? "PHOTO-01 레시피 획득" : "공정 조건 재조정 필요";
+                var recipeCount = SemiconGameState.Instance?.GetRecipeVariantCount(
+                    SemiconRecipeKind.PhotoPatternedWafer) ?? 0;
+                resultRecipeText.text = result.Qualified
+                    ? $"새 레시피 등록 완료  ·  총 {recipeCount}개"
+                    : "공정 조건 재조정 필요";
                 resultRecipeText.color = result.Qualified
                     ? new Color32(20, 155, 111, 255)
                     : new Color32(205, 91, 72, 255);
@@ -444,7 +448,7 @@ namespace SemiconCity.Game
             if (resultRecipeDetailText != null)
             {
                 resultRecipeDetailText.text = result.Qualified
-                    ? "생산 라인 사용 가능"
+                    ? "이 조건이 별도 레시피로 저장되어 생산 라인에서 선택할 수 있습니다."
                     : "목표 범위를 다시 확인하세요.";
             }
         }
@@ -477,8 +481,8 @@ namespace SemiconCity.Game
         {
             SetGroup(processingGroup, 0f, false);
             var elapsed = 0f;
-            var processingWaferPosition = new Vector2(0f, -8f);
-            var processingScale = readyWaferScale * 1.34f;
+            var processingWaferPosition = new Vector2(0f, -34f);
+            var processingScale = readyWaferScale * 1.14f;
             while (elapsed < duration && !skipRequested)
             {
                 elapsed += Time.unscaledDeltaTime;
@@ -526,8 +530,8 @@ namespace SemiconCity.Game
             }
             var startWaferPosition = waferRoot != null ? waferRoot.anchoredPosition : Vector2.zero;
             var startWaferScale = waferRoot != null ? waferRoot.localScale : Vector3.one;
-            var resultWaferPosition = new Vector2(-350f, -28f);
-            var resultWaferScale = readyWaferScale * 1.28f;
+            var resultWaferPosition = new Vector2(-350f, -38f);
+            var resultWaferScale = readyWaferScale * 1.1f;
             var elapsed = 0f;
             while (elapsed < duration && !skipRequested)
             {
@@ -656,7 +660,7 @@ namespace SemiconCity.Game
             {
                 recipeText.text = state.ExperimentCount == 0
                     ? "이전 최고 기록   ·   아직 저장된 실험이 없습니다."
-                    : $"이전 최고 기록   ·   수율 {state.BestYield:0.0}%   ·   정밀도 {state.BestPrecision:0.0}%   ·   " +
+                    : $"등록 레시피 {state.GetRecipeVariantCount(SemiconRecipeKind.PhotoPatternedWafer)}개   ·   최고 수율 {state.BestYield:0.0}%   ·   정밀도 {state.BestPrecision:0.0}%   ·   " +
                       $"노광량 {state.BestDose} mJ/cm²   ·   초점 {state.BestFocus:+0.00;-0.00;0.00} μm";
             }
             if (experimentCountText != null)
@@ -665,7 +669,7 @@ namespace SemiconCity.Game
             }
             if (researchBalanceText != null)
             {
-                researchBalanceText.text = $"연구 데이터 {state.ResearchPoints}";
+                researchBalanceText.text = $"실험 비용 ₩{ExperimentCost:N0}  ·  보유 ₩{state.Credits:N0}";
             }
         }
 
@@ -708,7 +712,7 @@ namespace SemiconCity.Game
 
         private void SetProcessingCopy(string english, string korean, string progress)
         {
-            SetText(processingStatusText, $"{english}\n{korean}");
+            SetText(processingStatusText, $"<size=20>{english}</size>\n<size=30><b>{korean}</b></size>");
             SetText(processingProgressText, progress);
         }
 
